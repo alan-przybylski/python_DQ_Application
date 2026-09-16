@@ -1,0 +1,13 @@
+id;name;email;age
+1;Sample customer 01;customer01@example.test;25
+2;Sample customer 02;customer02@example.test;34
+3;Sample customer 03;customer03.example.test;42
+4;Sample customer 04;;29
+5;Sample customer 05;customer05@example;56
+6;Sample customer 06;;16
+7;Sample customer 07;customer07@example.test;38
+8;;customer08@example.test;45
+9;Sample customer 09;customer09@example.test;150
+10;Sample customer 10;customer10@example.test;
+11;;customer11@example.test;22
+12;Sample customer 12;customer12@example.test;17

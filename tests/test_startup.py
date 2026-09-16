@@ -8,7 +8,7 @@ import sys
 
 def test_demo_startup_isolates_database_and_exports(tmp_path):
     root = Path(__file__).resolve().parents[1]
-    program = r'''
+    program = r"""
 import hashlib
 from pathlib import Path
 import sys
@@ -37,12 +37,17 @@ sys.argv = ["main.py", "--demo"]
 main.main()
 assert Path(config["database"]) == paths.DATA_DIR / "demo.db"
 assert paths.EXCELS_DIR == paths.DATA_DIR / "demo_exports"
-import ui.check_dq_panel as panel
-assert panel.EXCELS_DIR == paths.DATA_DIR / "demo_exports", panel.EXCELS_DIR
 assert hashlib.sha256(private.read_bytes()).hexdigest() == before
-'''
+"""
     environment = os.environ.copy()
     environment["PYTHONIOENCODING"] = "utf-8"
-    result = subprocess.run([sys.executable, "-c", program, str(tmp_path)], cwd=root,
-                            env=environment, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(tmp_path)],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
     assert result.returncode == 0, result.stdout + result.stderr

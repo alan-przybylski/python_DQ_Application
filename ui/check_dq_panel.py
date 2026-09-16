@@ -1,424 +1,371 @@
 import tkinter as tk
-from tkinter import messagebox, ttk, Scale, HORIZONTAL
-import sqlite3
-from numpy.ma.extras import row_stack
+from tkinter import ttk, messagebox
 
-from database.connection import get_connection, dict_row_factory
-from config.paths import EXCELS_DIR
-import json
-from datetime import datetime
-import csv
-import os
+from config.i18n import tr, AppError
+from database.connection import get_connection
+from logic.datasets import list_tables
+from logic.dq_engine import (
+    run_checks,
+    runs_for_table,
+    run_details,
+    trend_for_table,
+    export_errors,
+)
+from logic.dq_report import draw_chart
+from ui.common import header, footer, table_view, error_box, save_csv_dialog
+from ui.theme import SURFACE, ACCENT, MUTED
 from ui.utils import place_window
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-from logic.dq_report import draw_chart, get_data_from_dq_results
+
 
 class CheckDqPanel:
     def __init__(self, root, username, role, data_quality_root, time_var):
-        self.root = root
-        self.username = username
-        self.role = role
-        self.data_quality_root = data_quality_root
-        self.time_var = time_var
-        self.rules_dict = {}
-
-        self.root.title("DQ Studio / Quality results")
-        #self.root.geometry("800x400")
-        place_window(self.root)
-
-        tk.Label(self.root, text=f"Logged in as: {self.username}", anchor="e").pack(fill="x", padx=10, pady=5)
-        bottom_frame = tk.Frame(self.root)
-        bottom_frame.pack(side="bottom", fill="x")
-        self.clock_label = tk.Label(bottom_frame, textvariable=self.time_var, font=("Helvetica", 10))
-        self.clock_label.pack(side="right", padx=10, pady=5)
-        tk.Button(bottom_frame, text="BACK", command=self.go_back).pack(side="left", padx=10, pady=5)
-        self.root.protocol("WM_DELETE_WINDOW", self.go_back)   #wciśnięcie X w prawym górnym rogu działa jak BACK
-
-        top_frame = tk.Frame(self.root)
-        top_frame.pack(padx=10, pady=10, fill="x")
-
-        tk.Button(top_frame, text="Run DQ Check", command=self.open_dq_dialog).grid(row=0, column=0, sticky="nsew")
-        #tk.Button(top_frame, text="Choose DQ Rule", command=self.get_tables_to_dq_check).grid(row=0, column=1, sticky="nsew")
-        #tk.Button(top_frame, text="Deactivate User").grid(row=0, column=2, sticky="nsew")
-
-        for i in range(3):
-            top_frame.grid_columnconfigure(i, weight=1)
-
-        #REPORT FRAME
-        kpi_frame = tk.Frame(self.root)
-        kpi_frame.pack(fill="both", expand=True, padx=16, pady=12)
-
-        #chart_container = tk.Frame(kpi_frame)
-        #chart_container.pack(fill="both", expand=True)
-
-        data = get_data_from_dq_results()
-
-        draw_chart(kpi_frame, data)
-
+        self.root, self.username, self.role = root, username, role
+        self.data_quality_root, self.time_var = data_quality_root, time_var
+        self.rules_dict, self.runs, self.current = {}, [], None
+        place_window(root)
+        root.title("DQ Studio / " + tr("Quality report"))
+        header(root, "Quality report", username)
+        footer(root, self.go_back, time_var)
+        root.protocol("WM_DELETE_WINDOW", self.go_back)
+        body = tk.Frame(root)
+        body.pack(fill="both", expand=True, padx=20, pady=8)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(2, weight=2, minsize=125)
+        body.rowconfigure(4, weight=1, minsize=85)
+        toolbar = tk.Frame(body)
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        tables = self.get_tables_to_dq_check()
+        self.report_table = tk.StringVar(value=tables[0] if tables else "")
+        tk.Label(toolbar, text=tr("Table")).pack(side="left", padx=(0, 6))
+        selector = ttk.Combobox(
+            toolbar,
+            textvariable=self.report_table,
+            values=tables,
+            state="readonly",
+            width=19,
+        )
+        selector.pack(side="left", padx=(0, 10))
+        selector.bind("<<ComboboxSelected>>", lambda event: self.refresh_report())
+        self.run_choice = tk.StringVar()
+        self.run_selector = ttk.Combobox(
+            toolbar, textvariable=self.run_choice, state="readonly", width=28
+        )
+        self.run_selector.pack(side="left", padx=4)
+        self.run_selector.bind("<<ComboboxSelected>>", lambda event: self.select_run())
+        self.export_button = tk.Button(
+            toolbar, text=tr("Export errors"), command=self.export_current
+        )
+        self.export_button.pack(side="right", padx=3)
+        tk.Button(toolbar, text=tr("Run checks"), command=self.open_dq_dialog).pack(
+            side="right", padx=3
+        )
+        tk.Button(toolbar, text=tr("Refresh"), command=self.refresh_report).pack(
+            side="right", padx=3
+        )
+        cards = tk.Frame(body)
+        cards.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self.metrics = {}
+        for index, (key, label) in enumerate(
+            (
+                ("rate", "Pass rate"),
+                ("checks", "Checks"),
+                ("failed", "Failed checks"),
+                ("rules", "Rules completed"),
+            )
+        ):
+            cards.columnconfigure(index, weight=1, uniform="metric")
+            card = tk.Frame(cards, background=SURFACE)
+            card.grid(row=0, column=index, sticky="ew", padx=(0, 8 if index < 3 else 0))
+            tk.Label(
+                card,
+                text=tr(label),
+                background=SURFACE,
+                foreground=MUTED,
+                font=("Segoe UI", 9),
+            ).pack(anchor="w", padx=12, pady=(6, 0))
+            value = tk.StringVar(value="—")
+            self.metrics[key] = value
+            tk.Label(
+                card,
+                textvariable=value,
+                background=SURFACE,
+                foreground=ACCENT if key != "failed" else "#BF4655",
+                font=("Segoe UI", 19, "bold"),
+            ).pack(anchor="w", padx=12, pady=(0, 4))
+        self.chart_frame = tk.Frame(body, background=SURFACE)
+        self.chart_frame.grid(row=2, column=0, sticky="nsew")
+        filters = tk.Frame(body)
+        filters.grid(row=3, column=0, sticky="ew", pady=(6, 4))
+        tk.Label(
+            filters,
+            text=tr("Failed records for this run"),
+            font=("Segoe UI", 11, "bold"),
+        ).pack(side="left")
+        self.search = tk.StringVar()
+        tk.Entry(filters, textvariable=self.search, width=25).pack(
+            side="right", padx=(8, 0)
+        )
+        tk.Label(filters, text=tr("Search errors")).pack(side="right")
+        self.search.trace_add("write", lambda *args: self.render_errors())
+        frame, self.error_tree = table_view(
+            body,
+            [
+                ("rule_id", "Rule", 75),
+                ("record_id", "Record", 95),
+                ("field_name", "Field", 150),
+                ("field_value", "Value", 235),
+                ("error_message", "Message", 410),
+            ],
+            3,
+        )
+        frame.grid(row=4, column=0, sticky="nsew")
+        self.error_tree.bind("<Double-1>", self.show_error_detail)
+        self.status = tk.Label(
+            body, anchor="w", justify="left", font=("Segoe UI", 9), wraplength=1040
+        )
+        self.status.grid(row=5, column=0, sticky="ew", pady=(4, 0))
+        self.status.bind("<Button-1>", self.show_execution_errors)
+        self.refresh_report()
 
     def go_back(self):
         self.root.destroy()
         self.data_quality_root.deiconify()
 
     def get_tables_to_dq_check(self):
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-            all_tables = [row[0] for row in cursor.fetchall()]
-        finally:
-            cursor.close()
-            conn.close()
-
-        excluded = {"dq_rules", "dq_rules_history", "data_load_log", "dq_results", "dq_field_results", "users"}
-        return [t for t in all_tables if t not in excluded]
+        return list_tables()
 
     def get_active_rules_for_table(self, table_name):
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, description FROM dq_rules WHERE status='ACTIVE' AND target_table=?", (table_name,))
-        #rules = [r[0] for r in cursor.fetchall()]  # tylko id
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        if rows:
-            return rows
+        connection = get_connection()
+        try:
+            return connection.execute(
+                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND target_table=? ORDER BY id",
+                (table_name,),
+            ).fetchall()
+        finally:
+            connection.close()
+
+    def refresh_report(self, selected_run=None):
+        try:
+            table = self.report_table.get()
+            self.runs = runs_for_table(table) if table else []
+            self.run_selector.configure(
+                values=[f"#{run['id']} / {run['started_at']}" for run in self.runs]
+            )
+            index = next(
+                (
+                    index
+                    for index, run in enumerate(self.runs)
+                    if run["id"] == selected_run
+                ),
+                0,
+            )
+            if self.runs:
+                self.run_selector.current(index)
+            else:
+                self.run_choice.set(tr("No runs yet"))
+            for widget in self.chart_frame.winfo_children():
+                widget.destroy()
+            self.chart = draw_chart(
+                self.chart_frame, trend_for_table(table) if table else []
+            )
+            self.select_run()
+        except Exception as error:
+            error_box(error, self.root)
+
+    def select_run(self):
+        index = self.run_selector.current()
+        self.current = (
+            run_details(self.runs[index]["id"]) if self.runs and index >= 0 else None
+        )
+        self.export_button.configure(state="normal" if self.current else "disabled")
+        if self.current:
+            total = self.current["passed"] + self.current["failed"]
+            self.metrics["rate"].set(
+                f"{100 * self.current['passed'] / total:.1f}%" if total else "—"
+            )
+            self.metrics["checks"].set(str(total))
+            self.metrics["failed"].set(str(self.current["failed"]))
+            self.metrics["rules"].set(
+                f"{self.current['rules_completed']} / {self.current['rules_requested']}"
+            )
+            self.status.configure(
+                text=f"#{self.current['id']} · {tr(self.current['status'])} · {self.current['completed_at']} · {self.current['username']}"
+                + (
+                    f" · {tr('Execution errors: {details}', details=len(self.current['execution_errors']))}"
+                    if self.current["execution_errors"]
+                    else ""
+                )
+            )
         else:
+            for value in self.metrics.values():
+                value.set("—")
+            self.status.configure(
+                text=tr(
+                    "Legacy results have no run id. Run checks to start linked history."
+                )
+            )
+        self.render_errors()
+
+    def render_errors(self):
+        self.error_tree.delete(*self.error_tree.get_children())
+        query = self.search.get().casefold()
+        for row in self.current["errors"] if self.current else []:
+            values = [
+                row[key] if row[key] is not None else ""
+                for key in (
+                    "rule_id",
+                    "record_id",
+                    "field_name",
+                    "field_value",
+                    "error_message",
+                )
+            ]
+            if not query or query in " ".join(map(str, values)).casefold():
+                self.error_tree.insert("", "end", values=values)
+
+    def show_error_detail(self, event=None):
+        selection = self.error_tree.selection()
+        if selection:
+            values = self.error_tree.item(selection[0], "values")
+            labels = ("Rule", "Record", "Field", "Value", "Message")
+            messagebox.showinfo(
+                tr("Details"),
+                "\n".join(
+                    f"{tr(label)}: {value}" for label, value in zip(labels, values)
+                ),
+                parent=self.root,
+            )
+
+    def show_execution_errors(self, event=None):
+        if self.current and self.current["execution_errors"]:
+            messagebox.showerror(
+                tr("Error"),
+                "\n".join(
+                    f"#{error['rule_id']} {error['description']}: {error['message']}"
+                    for error in self.current["execution_errors"]
+                ),
+                parent=self.root,
+            )
+
+    def export_current(self):
+        if not self.current:
             return
+        path = save_csv_dialog(self.root, f"dq_run_{self.current['id']}_errors.csv")
+        if path:
+            try:
+                count = export_errors(self.current["id"], path)
+                messagebox.showinfo(
+                    tr("Success"),
+                    tr("Exported {count} rows.", count=count),
+                    parent=self.root,
+                )
+            except Exception as error:
+                error_box(error, self.root)
 
     def open_dq_dialog(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Run DQ Rules")
         place_window(dialog)
         dialog.transient(self.root)
-        # POTESTUJ TO BO FAJNIE GDYBY DZIAŁAŁO ! place_window(self.root, width=400, height=300)
+        dialog.title(tr("Run checks"))
+        header(dialog, "Run checks")
+        footer(dialog, dialog.destroy)
+        form = tk.Frame(dialog)
+        form.pack(expand=True, padx=24, pady=12)
+        tables = self.get_tables_to_dq_check()
+        self.selected_table = tk.StringVar(
+            value=self.report_table.get()
+            if self.report_table.get() in tables
+            else tables[0]
+            if tables
+            else ""
+        )
+        tk.Label(form, text=tr("Table")).pack(anchor="w", pady=6)
+        dropdown = ttk.Combobox(
+            form,
+            textvariable=self.selected_table,
+            values=tables,
+            state="readonly",
+            width=38,
+        )
+        dropdown.pack(fill="x")
+        self.run_type = tk.StringVar(value="all")
+        for value, label in (("all", "All rules"), ("single", "Single rule")):
+            tk.Radiobutton(
+                form,
+                text=tr(label),
+                variable=self.run_type,
+                value=value,
+                command=self.on_run_type_change,
+            ).pack(anchor="w", pady=6)
+        self.rule_var = tk.StringVar()
+        self.rule_dropdown = ttk.Combobox(
+            form, textvariable=self.rule_var, state="disabled", width=38
+        )
+        self.rule_dropdown.pack(fill="x", pady=8)
 
-        # Dropdown tabel
-        available_tables = self.get_tables_to_dq_check()
-        self.selected_table = tk.StringVar(value=available_tables[0] if available_tables else "")
-        tk.Label(dialog, text="Select table to check:").pack(pady=(40, 6))
-        table_dropdown = ttk.Combobox(dialog, values=available_tables, textvariable=self.selected_table, state="readonly", width=40)
-        table_dropdown.pack(pady=5)
+        def update_rules(event=None):
+            rules = self.get_active_rules_for_table(self.selected_table.get())
+            self.rules_dict = {
+                f"#{rule_id} / {description}": rule_id for rule_id, description in rules
+            }
+            self.rule_dropdown.configure(values=list(self.rules_dict))
+            self.rule_var.set(next(iter(self.rules_dict), tr("No active rules")))
 
-        # Wybór typu uruchomienia
-        tk.Label(dialog, text="Choose run type:").pack(pady=10)
-        self.run_type = tk.StringVar(value="single")
-        tk.Radiobutton(dialog, text="Single Rule", variable=self.run_type, value="single", command=self.on_run_type_change).pack()
-        tk.Radiobutton(dialog, text="All Rules", variable=self.run_type, value="all", command=self.on_run_type_change).pack()
-
-        # Dropdown dla pojedynczej reguły
-        tk.Label(dialog, text="Choose single rule").pack(pady=(15,0))
-        self.rule_var = tk.IntVar()
-        self.rule_dropdown = tk.OptionMenu(dialog, self.rule_var, [])
-        self.rule_dropdown.pack(pady=10)
-
-        tk.Button(dialog, text="BACK", command=dialog.destroy).pack(side="bottom", anchor="sw", padx=10, pady=10)
-
-        def update_rules(*args):
-            table = self.selected_table.get()
-            rules = self.get_active_rules_for_table(table)  # [(id, description), ...]
-            menu = self.rule_dropdown["menu"]
-            menu.delete(0, "end")
-            self.rules_dict.clear()
-
-            if rules:
-                first_id, first_desc = rules[0]
-                self.rule_var.set(first_id)
-
-                for rule_id, description in rules:
-                    self.rules_dict[rule_id] = description
-                    menu.add_command(
-                        label=f"{rule_id} - {description}",
-                        command=lambda rid=rule_id: self.rule_var.set(rid)
-                    )
-            else:
-                self.rule_var.set(0)
-                menu.add_command(label="No active rules", command=lambda: self.rule_var.set(0))
-
+        dropdown.bind("<<ComboboxSelected>>", update_rules)
         update_rules()
-        self.selected_table.trace_add("write", lambda *args: update_rules())
+        tk.Button(
+            form, text=tr("Run checks"), command=lambda: self.run_dq_from_dialog(dialog)
+        ).pack(fill="x", pady=12)
 
-        tk.Button(dialog, text="Run", command=lambda: self.run_dq_from_dialog(dialog)).pack(pady=10)
+    def on_run_type_change(self):
+        self.rule_dropdown.configure(
+            state="disabled" if self.run_type.get() == "all" else "readonly"
+        )
 
     def run_dq_from_dialog(self, dialog):
         table = self.selected_table.get()
-        run_type = self.run_type.get()
+        if not table:
+            error_box(AppError("Select a table."), dialog)
+            return
+        rule_id = self.rules_dict.get(self.rule_var.get())
+        if self.run_type.get() == "single" and rule_id is None:
+            error_box(AppError("No rule selected."), dialog)
+            return
+        mode = self.run_type.get()
         dialog.destroy()
-
-        if run_type == "all":
+        if mode == "all":
             self.run_all_dq_rules(table)
         else:
-            rule_id = self.rule_var.get()
-            if rule_id == 0:
-                messagebox.showerror("Error", "No rule selected.")
-                return
             self.run_selected_dq_rule(table, rule_id)
 
-    def run_all_dq_rules(self, table):
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.row_factory = dict_row_factory
-        all_records_for_csv = []
-
+    def finish_run(self, table, rule_id=None):
         try:
-            # Pobranie aktywnych reguł
-            cursor.execute(
-                "SELECT id, sql_query, version, target_table, error_message "
-                "FROM dq_rules WHERE status='ACTIVE' AND target_table=?",
-                (table,)
+            run_id = run_checks(table, self.username, rule_id)
+            self.report_table.set(table)
+            self.refresh_report(run_id)
+            details = run_details(run_id)
+            notify = (
+                messagebox.showwarning
+                if details["status"] != "completed"
+                else messagebox.showinfo
             )
-            rules = cursor.fetchall()
-
-            if not rules:
-                messagebox.showinfo("Info", f"No active rules for table {table}.")
-                return
-
-            total_rules = len(rules)
-            rules_executed = 0
-            results_summary = []
-
-            for rule in rules:
-                rule_id = rule['id']
-                sql_query = rule['sql_query']
-                rule_version = rule['version']
-                table = rule['target_table']
-                rule_error_message = rule.get('error_message') or "DQ check failed"
-
-                # Wykonanie zapytania SQL reguły
-                try:
-                    cursor.execute(sql_query)
-                    records = cursor.fetchall()
-                except sqlite3.Error as e:
-                    messagebox.showerror("SQL Error", f"Error executing rule {rule_id}:\n{e}")
-                    continue
-
-                if not records:
-                    messagebox.showinfo("Info", f"Rule {rule_id} returned no records.")
-                    continue
-
-                # Liczymy passed i failed
-                failed_count = sum(1 for r in records if r.get('dq_check', 1) == 0)
-                passed_count = sum(1 for r in records if r.get('dq_check', 1) == 1)
-
-                # Wstawienie do dq_results
-                try:
-                    cursor.execute(
-                        """
-                        INSERT INTO dq_results
-                        (rule_id, rule_version, failed_count, passed_count)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (rule_id, rule_version, failed_count, passed_count)
-                    )
-                except sqlite3.Error as e:
-                    messagebox.showerror("SQL Error", f"Error inserting DQ results for rule {rule_id}:\n{e}")
-                    continue
-
-                # Wstawienie do dq_field_results i przygotowanie rekordów do CSV
-                for record in records:
-                    record_id = str(record.get('id', 'unknown'))
-                    test_result = record.get('dq_check', 1)
-                    message = "DQ check passed" if test_result == 1 else rule_error_message
-
-                    checked_field_name = list(record.keys())[1]
-                    field_value = record.get(checked_field_name, "")
-
-                    try:
-                        cursor.execute(
-                            """
-                            INSERT INTO dq_field_results
-                            (rule_id, rule_version, record_id, field_name, field_value, test_result, error_message, target_table)
-                            VALUES (?,?,?,?,?,?,?,?)
-                            """,
-                            (
-                                rule_id,
-                                rule_version,
-                                record_id,
-                                checked_field_name,
-                                str(field_value) if field_value is not None else "",
-                                test_result,
-                                message,
-                                table
-                            )
-                        )
-                    except sqlite3.Error as e:
-                        messagebox.showerror(
-                            "SQL Error",
-                            f"Error inserting field result for rule {rule_id}, record {record_id}:\n{e}"
-                        )
-
-                    # Dodajemy do listy rekordów do CSV
-                    record_for_csv = {
-                        'rule_id': rule_id,
-                        'record_id': record_id,
-                        'checked_field': checked_field_name,
-                        'field_value': field_value,
-                        'test_result': test_result,
-                        'error_message': message
-                    }
-                    all_records_for_csv.append(record_for_csv)
-
-                conn.commit()
-                rules_executed += 1
-                results_summary.append(f"Rule {rule_id}: Passed {passed_count}, Failed {failed_count}")
-
-            # Podsumowanie
-            overall_status = "SUCCESS" if all("Passed" in r for r in results_summary) else "CHECK FAILED"
-            messagebox.showinfo(
-                "DQ Check Summary",
-                f"Rules executed: {rules_executed}/{total_rules}\n"
-                f"Total rows in CSV: {len(all_records_for_csv)}\n\n" +
-                "\n".join(results_summary) +
-                f"\n\nOverall Status: {overall_status}"
+            notify(
+                tr("Warning" if details["status"] != "completed" else "Success"),
+                tr(
+                    "Run #{run_id}: {passed} passed, {failed} failed; {errors} execution errors.",
+                    run_id=run_id,
+                    passed=details["passed"],
+                    failed=details["failed"],
+                    errors=len(details["execution_errors"]),
+                ),
+                parent=self.root,
             )
+            return run_id
+        except Exception as error:
+            error_box(error, self.root)
 
-            # Tworzenie CSV dla wszystkich reguł
-
-            if all_records_for_csv:
-                folder_path = os.path.dirname(EXCELS_DIR)
-                excels = os.path.join(folder_path, "excels")
-                csv_file = os.path.join(excels, "all_dq_rules_result.csv")
-                fieldnames = ['rule_id', 'record_id', 'checked_field', 'field_value', 'test_result', 'error_message']
-                #folder_path = os.path.dirname(csv_file)
-
-                try:
-                    with open(csv_file, mode="w", newline="", encoding="utf-8") as f:
-                        writer = csv.DictWriter(f, fieldnames=fieldnames)
-                        writer.writeheader()
-                        for record in all_records_for_csv:
-                            writer.writerow(record)
-                    messagebox.showinfo("Export Complete",
-                                        f"All rules - {len(all_records_for_csv)} records exported to CSV.")
-                    #os.startfile(folder_path)
-                    os.startfile(excels)
-
-                except Exception as e:
-                    messagebox.showerror("CSV Error", f"Error exporting CSV:\n{e}")
-
-        finally:
-            cursor.close()
-            conn.close()
+    def run_all_dq_rules(self, table):
+        return self.finish_run(table)
 
     def run_selected_dq_rule(self, table, rule_id):
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.row_factory = dict_row_factory
-
-        try:
-            cursor.execute(
-                "SELECT sql_query, version, target_table, error_message FROM dq_rules WHERE id=? AND status='ACTIVE'",
-                (rule_id,)
-            )
-            row = cursor.fetchone()
-            if not row:
-                messagebox.showerror("Error", f"Rule {rule_id} not found or inactive.")
-                return
-
-            sql_query = row['sql_query']
-            rule_version = row['version']
-            rule_error_message = row.get('error_message') or "DQ check failed"
-
-            # Wykonanie zapytania SQL reguły
-            try:
-                cursor.execute(sql_query)
-                records = cursor.fetchall()
-            except sqlite3.Error as e:
-                messagebox.showerror("SQL Error", f"Error executing rule {rule_id}:\n{e}")
-                return
-
-            if not records:
-                messagebox.showinfo("Info", f"Rule {rule_id} returned no records.")
-                return
-
-            failed_count = sum(1 for r in records if r.get('dq_check', 1) == 0)
-            passed_count = sum(1 for r in records if r.get('dq_check', 1) == 1)
-
-            # WSTAWIENIE DO dq_results
-            try:
-                cursor.execute(
-                    """
-                    INSERT INTO dq_results
-                    (rule_id, rule_version, failed_count, passed_count)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (rule_id, rule_version, failed_count, passed_count)
-                )
-            except sqlite3.Error as e:
-                messagebox.showerror("SQL Error", f"Error inserting DQ results for rule {rule_id}:\n{e}")
-
-            #WSTAWIENIE DO dq_field_results
-            for record in records:
-                record_id = str(record.get('id', 'unknown'))
-                test_result = record.get('dq_check', 1)
-                message = "DQ check passed" if test_result == 1 else rule_error_message
-
-                #Wybieram tylko drugą kolumnę SELECTa
-                checked_field = list(record.keys())[1]
-                field_value = record.get(checked_field, "")
-
-                try:
-                    cursor.execute(
-                        """
-                        INSERT INTO dq_field_results
-                        (rule_id, rule_version, record_id, field_name, field_value, test_result, error_message, target_table)
-                        VALUES (?,?,?,?,?,?,?,?)
-                        """,
-                        (
-                            rule_id,
-                            rule_version,
-                            record_id,
-                            checked_field,
-                            str(field_value) if field_value is not None else "",
-                            test_result,
-                            message,
-                            table
-                        )
-                    )
-                except sqlite3.Error as e:
-                    messagebox.showerror(
-                        "SQL Error",
-                        f"Error inserting field result for rule {rule_id}, record {record_id}:\n{e}"
-                    )
-
-            conn.commit()
-            messagebox.showinfo("DQ Result",
-                                f"Rule {rule_id} executed.\nPassed: {passed_count}, Failed: {failed_count}")
-
-            #CSV generate function
-            for record in records:
-                test_result = record.get('dq_check', 1)
-                record['error_message'] = "DQ check passed" if test_result == 1 else rule_error_message
-
-            # Tworzenie CSV
-
-            folder_path = os.path.dirname(EXCELS_DIR)
-            excels = os.path.join(folder_path, "excels")
-            csv_file = os.path.join(excels, f"dq_rule_{rule_id}_results.csv")
-
-            fieldnames = list(records[0].keys())  # już zawiera error_message
-            try:
-                with open(csv_file, mode="w", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    for record in records:
-                        writer.writerow(record)
-                messagebox.showinfo("Export Complete", f"Rule {rule_id} - {len(records)} records exported to CSV.")
-            except Exception as e:
-                messagebox.showerror("CSV Error", f"Error exporting rule {rule_id} to CSV:\n{e}")
-
-            os.startfile(excels)
-            #os.path.join(folder_path, "excels"))
-
-        finally:
-            cursor.close()
-            conn.close()
-
-    def on_run_type_change(self):
-        if self.run_type.get() == "all":
-            #Dropdown locked dla all rules
-            self.rule_dropdown.configure(state="disabled")
-            #messagebox.showinfo("Info", "Dropdown is disabled in ALL RULES mode.")
-        else:
-            #Dropdown unlock dla single
-            self.rule_dropdown.configure(state="normal")
+        return self.finish_run(table, rule_id)

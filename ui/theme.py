@@ -38,12 +38,34 @@ def apply_theme(window):
         window.option_add(option, value)
     style = ttk.Style(window)
     style.theme_use("clam")
-    style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
-                    foreground=INK, rowheight=29, borderwidth=0, font=("Segoe UI", 9))
-    style.configure("Treeview.Heading", background="#E3EBF3", foreground=INK,
-                    font=("Segoe UI", 9, "bold"), relief="flat", padding=(8, 9))
-    style.map("Treeview", background=[("selected", ACCENT)], foreground=[("selected", SURFACE)])
+    style.configure(
+        "Treeview",
+        background=SURFACE,
+        fieldbackground=SURFACE,
+        foreground=INK,
+        rowheight=29,
+        borderwidth=0,
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "Treeview.Heading",
+        background="#E3EBF3",
+        foreground=INK,
+        font=("Segoe UI", 9, "bold"),
+        relief="flat",
+        padding=(8, 9),
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", ACCENT)],
+        foreground=[("selected", SURFACE)],
+    )
     style.configure("TCombobox", padding=5, fieldbackground=SURFACE, foreground=INK)
     style.map("TCombobox", fieldbackground=[("readonly", SURFACE)])
-    style.configure("TScrollbar", background="#B9C7D7", troughcolor=BACKGROUND,
-                    borderwidth=0, arrowsize=13)
+    style.configure(
+        "TScrollbar",
+        background="#B9C7D7",
+        troughcolor=BACKGROUND,
+        borderwidth=0,
+        arrowsize=13,
+    )

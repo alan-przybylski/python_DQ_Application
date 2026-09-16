@@ -1,4 +1,5 @@
--- Existing seven MySQL tables mapped to SQLite. No new history model.
+-- V1 baseline for the original MySQL import. initialize_database applies
+-- additive migrations.py afterwards to add the V2 run-history model.
 -- Timestamp strings use local time, matching the original desktop MySQL session.
 CREATE TABLE IF NOT EXISTS customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

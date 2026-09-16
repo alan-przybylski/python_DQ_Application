@@ -57,6 +57,8 @@ def initialize_database(database=None):
     try:
         connection.executescript(Path(__file__).with_name("schema.sql").read_text(encoding="utf-8"))
         connection.commit()
+        from database.migrations import upgrade
+        upgrade(connection, destination)
     finally:
         connection.close()
 

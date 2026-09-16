@@ -28,6 +28,18 @@ def main():
         from ui.data_quality import DataQualityWindow
         from ui.check_dq_panel import CheckDqPanel
         from ui.file_history import FileHistory
+        from ui.import_window import ImportWindow
+        from logic.datasets import read_csv, import_data
+        from logic.dq_engine import run_checks
+        from config.i18n import set_language
+
+        set_language("EN", persist=False)
+        import_data(
+            read_csv(PROJECT_DIR / "samples/customers_with_issues.csv"),
+            "customers",
+            "demo",
+        )
+        run_checks("customers", "demo")
 
         root = tk.Tk()
         frames = []
@@ -64,14 +76,32 @@ def main():
             history_root = tk.Toplevel(root)
             FileHistory(history_root, "demo", "admin", root, clock)
             capture(history_root, "history.png")
+            import_root = tk.Toplevel(root)
+            importer = ImportWindow(import_root, "demo", "superuser", root, clock)
+            importer.mode.set("new")
+            importer.new_name.set("new_customers")
+            importer.change_mode()
+            from unittest.mock import patch
+
+            with patch(
+                "ui.import_window.filedialog.askopenfilename",
+                return_value=str(PROJECT_DIR / "samples/customers_with_issues.csv"),
+            ):
+                importer.choose_file()
+            capture(import_root, "import.png")
             if callback_errors:
                 raise RuntimeError(callback_errors)
-            frames[0].save(args.output / "walkthrough.gif", save_all=True,
-                           append_images=frames[1:], duration=2200, loop=0)
+            frames[0].save(
+                args.output / "walkthrough.gif",
+                save_all=True,
+                append_images=frames[1:],
+                duration=2200,
+                loop=0,
+            )
         finally:
             root.destroy()
             config["database"] = old_database
-        print(f"Captured 5 application views and walkthrough: {args.output.resolve()}")
+        print(f"Captured 6 application views and walkthrough: {args.output.resolve()}")
 
 
 if __name__ == "__main__":

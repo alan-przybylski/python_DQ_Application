@@ -139,7 +139,7 @@ def migrate_snapshot(snapshot, destination):
         with connection:
             for table in TABLES:
                 content = snapshot["tables"][table]
-                expected_columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')]
+                expected_columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{table}")') if row[1] != "run_id"]
                 if content["columns"] != expected_columns:
                     raise ValueError(f"Unexpected columns in {table}; no data was discarded.")
                 quoted = ", ".join('"' + column.replace('"', '""') + '"' for column in content["columns"])

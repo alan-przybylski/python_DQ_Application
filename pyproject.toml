@@ -1,6 +1,6 @@
 [project]
 name = "python-dq-application"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop Data Quality application with Tkinter and local SQLite history"
 requires-python = ">=3.14"
 dependencies = [

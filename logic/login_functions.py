@@ -1,82 +1,62 @@
-import sqlite3
-from database.connection import get_connection
+"""Public account functions; existing logins remain valid after policy changes."""
+
 import bcrypt
 
-def create_user(username: str, password: str, role: str = "user"):
-    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('ascii')
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO users (username, password_hash, role, active) VALUES (?, ?, ?, ?)",
-            (username, password_hash, role, True)
-        )
-        conn.commit()
-    except sqlite3.Error as e:
-        raise Exception(f"Błąd przy tworzeniu użytkownika: {e}")
-    finally:
-        cursor.close()
-        conn.close()
+from config.i18n import AppError, tr
+from database.connection import get_connection
+from logic.accounts import list_users, normalize_role, save_user
 
-def change_password(username: str, new_password: str):
-    password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('ascii')
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "UPDATE users SET password_hash=?, active=TRUE WHERE username=?",
-            (password_hash, username)
-        )
-        if cursor.rowcount == 0:
-            raise Exception(f"Użytkownik '{username}' nie istnieje lub jest nieaktywny")
-        conn.commit()
-    finally:
-        cursor.close()
-        conn.close()
 
-def deactivate_user(username: str):
-    conn = get_connection()
-    cursor = conn.cursor()
+def create_user(username: str, password: str, role: str = "user", actor=None):
+    return save_user(username, password, role, True, actor, create=True)
+
+
+def change_password(username: str, new_password: str, actor=None):
+    connection = get_connection()
     try:
-        cursor.execute(
-            "UPDATE users SET active=FALSE WHERE username=? AND active=TRUE",
-            (username,)
-        )
-        if cursor.rowcount == 0:
-            raise Exception(f"Użytkownik '{username}' nie istnieje lub jest już dezaktywowany")
-        conn.commit()
+        row = connection.execute(
+            "SELECT role FROM users WHERE username=?", (username,)
+        ).fetchone()
+        if not row:
+            raise AppError("User not found.")
     finally:
-        cursor.close()
-        conn.close()
+        connection.close()
+    return save_user(username, new_password, normalize_role(row[0]), True, actor)
+
+
+def deactivate_user(username: str, actor=None):
+    connection = get_connection()
+    try:
+        row = connection.execute(
+            "SELECT role FROM users WHERE username=?", (username,)
+        ).fetchone()
+        if not row:
+            raise AppError("User not found.")
+    finally:
+        connection.close()
+    return save_user(username, None, normalize_role(row[0]), False, actor)
+
 
 def login_user(username: str, password: str):
-    conn = get_connection()
-    cursor = conn.cursor()
+    connection = get_connection()
     try:
-        cursor.execute(
-            "SELECT password_hash, role, active FROM users WHERE username=?",
-            (username,)
-        )
-        result = cursor.fetchone()
-        if not result:
-            return None, None, "Nie ma takiego użytkownika"
-        password_hash, role, active = result
-        if not active:
-            return None, None, "Użytkownik nieaktywny"
-        if bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
-            return username, role, None
-        return None, None, "Niepoprawne hasło"
+        row = connection.execute(
+            "SELECT password_hash,role,active FROM users WHERE username=?", (username,)
+        ).fetchone()
+        if not row:
+            return None, None, tr("User not found.")
+        if not row[2]:
+            return None, None, tr("Account is inactive.")
+        try:
+            valid = bcrypt.checkpw(password.encode(), row[0].encode())
+        except ValueError:
+            valid = False
+        if valid:
+            return username, normalize_role(row[1]), None
+        return None, None, tr("Incorrect password.")
     finally:
-        cursor.close()
-        conn.close()
+        connection.close()
 
-def get_all_users():
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("Select username,active from users")
-        users = [row[0] for row in cursor.fetchall()]
-        return users
-    finally:
-        cursor.close()
-        conn.close()
+
+def get_all_users(actor=None):
+    return [row[0] for row in list_users(actor)]

@@ -235,7 +235,7 @@ def trend_for_table(table):
             100.0*d.passed_count/NULLIF(d.passed_count+d.failed_count,0)
             FROM dq_results d JOIN dq_rules r ON r.id=d.rule_id
             LEFT JOIN dq_runs run ON run.id=d.run_id
-            WHERE COALESCE(run.table_name,r.target_table)=?
+            WHERE COALESCE(run.table_name,r.target_table)=? AND r.status='ACTIVE'
             ORDER BY d.timestamp,d.id""",
             (table,),
         ).fetchall()

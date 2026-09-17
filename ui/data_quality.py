@@ -6,6 +6,7 @@ from database.connection import get_connection
 from logic.datasets import list_tables, table_columns, quote
 from logic.dq_engine import validate_rule, error_text
 from logic.rules import archive_rule, save_rule
+from logic.rule_library import list_rules
 from ui.common import header, footer, table_view, error_box
 from ui.check_dq_panel import CheckDqPanel
 from ui.utils import place_window
@@ -25,79 +26,160 @@ class DataQualityWindow:
         tk.Button(toolbar, text=tr("Add rule"), command=self.add_rule_window).pack(
             side="left", padx=4
         )
-        tk.Button(
-            toolbar, text=tr("Deactivate rule"), command=self.deactivate_dq_rule
-        ).pack(side="left", padx=4)
-        tk.Button(toolbar, text=tr("Quality report"), command=self.check_dq_panel).pack(
+        tk.Button(toolbar, text=tr("Open rule"), command=self.open_rule).pack(
+            side="left", padx=4
+        )
+        tk.Button(toolbar, text=tr("Refresh"), command=self.load_rules).pack(
             side="right", padx=4
         )
-        tk.Label(root, text=tr("Active rules"), font=("Segoe UI", 12, "bold")).pack(
-            anchor="w", padx=24
+        filters = tk.Frame(root)
+        filters.pack(fill="x", padx=24, pady=4)
+        self.search = tk.StringVar()
+        self.table_filter = tk.StringVar(value=tr("All tables"))
+        self.status_filter = tk.StringVar(value=tr("All statuses"))
+        tk.Label(filters, text=tr("Search rules")).pack(side="left", padx=(0, 8))
+        search_entry = tk.Entry(filters, textvariable=self.search, width=28)
+        search_entry.pack(side="left", padx=(0, 16))
+        search_entry.bind("<KeyRelease>", lambda event: self.render_rules())
+        self.table_picker = ttk.Combobox(
+            filters, textvariable=self.table_filter, state="readonly", width=20
+        )
+        self.table_picker.pack(side="left", padx=8)
+        self.table_picker.bind(
+            "<<ComboboxSelected>>", lambda event: self.render_rules()
+        )
+        status_picker = ttk.Combobox(
+            filters,
+            textvariable=self.status_filter,
+            values=[tr("All statuses"), tr("Active"), tr("Inactive")],
+            state="readonly",
+            width=17,
+        )
+        status_picker.pack(side="left", padx=8)
+        status_picker.bind("<<ComboboxSelected>>", lambda event: self.render_rules())
+        self.summary = tk.StringVar()
+        tk.Label(root, textvariable=self.summary, anchor="w").pack(
+            fill="x", padx=24, pady=6
         )
         self.tree_frame, self.tree = table_view(
             root,
             [
-                ("id", "Rule", 60),
-                ("status", "Status", 95),
-                ("version", "Version", 75),
-                ("description", "Description", 240),
-                ("rule_type", "Rule type", 120),
-                ("target_table", "Table", 145),
-                ("error_message", "Error message", 230),
-                ("sql_query", "SQL query", 420),
+                ("id", "Rule", 65),
+                ("description", "Description", 365),
+                ("target_table", "Table", 200),
+                ("status", "Status", 160),
+                ("kpi", "Last KPI", 180),
             ],
             5,
         )
         self.tree_frame.pack(fill="both", expand=True, padx=24, pady=6)
-        middle = tk.Frame(root)
-        middle.pack(fill="x", padx=24, pady=4)
-        tk.Label(middle, text=tr("Archived rules"), font=("Segoe UI", 12, "bold")).pack(
-            side="left"
-        )
-        tk.Button(middle, text=tr("Modify rule"), command=self.modify_dq_rule).pack(
-            side="right"
-        )
-        self.archive_frame, self.archive_tree = table_view(
+        self.tree.column("description", stretch=True)
+        self.tree.tag_configure("inactive", foreground="#526581", background="#EDF0F4")
+        self.tree.tag_configure("active", foreground="#124F45", background="#F0FAF7")
+        self.tree.bind("<Double-1>", self.open_rule)
+        self.tree.bind("<Return>", self.open_rule)
+        for column in self.tree["columns"]:
+            self.tree.heading(
+                column,
+                command=lambda c=column: self.treeview_sort_column(self.tree, c, False),
+            )
+        tk.Label(
             root,
-            [
-                ("rule_id", "Rule", 65),
-                ("version", "Version", 80),
-                ("status", "Status", 95),
-                ("created_at", "Created", 170),
-                ("description", "Description", 240),
-                ("rule_type", "Rule type", 120),
-                ("target_table", "Table", 145),
-                ("deactivated_by", "Username", 140),
-                ("deactivated_at", "Date", 170),
-            ],
-            4,
-        )
-        self.archive_frame.pack(fill="both", expand=True, padx=24, pady=6)
-        for tree in (self.tree, self.archive_tree):
-            for column in tree["columns"]:
-                tree.heading(
-                    column,
-                    command=lambda t=tree, c=column: self.treeview_sort_column(
-                        t, c, False
-                    ),
-                )
+            text=tr(
+                "Double-click a rule for its definition, results and version history. KPI refers to its current version only."
+            ),
+            anchor="w",
+            wraplength=1020,
+        ).pack(fill="x", padx=24, pady=8)
         self.load_rules()
-        self.load_archive_rules()
 
     def go_back(self):
         self.root.destroy()
         self.dashboard_root.deiconify()
 
     def load_rules(self):
-        connection = get_connection()
-        try:
-            self.tree.delete(*self.tree.get_children())
-            for row in connection.execute(
-                "SELECT id,status,version,description,rule_type,target_table,error_message,sql_query FROM dq_rules WHERE status='ACTIVE' ORDER BY id"
+        self.rules = list_rules()
+        tables = sorted({row["target_table"] for row in self.rules})
+        self.table_picker.configure(values=[tr("All tables"), *tables])
+        self.render_rules()
+
+    def render_rules(self):
+        selected = self.tree.selection()
+        self.tree.delete(*self.tree.get_children())
+        search, table, status = (
+            self.search.get().casefold().strip(),
+            self.table_filter.get(),
+            self.status_filter.get(),
+        )
+        for row in self.rules:
+            active = row["status"] == "ACTIVE"
+            if table != tr("All tables") and table != row["target_table"]:
+                continue
+            if (
+                status == tr("Active")
+                and not active
+                or status == tr("Inactive")
+                and active
             ):
-                self.tree.insert("", "end", values=row)
-        finally:
-            connection.close()
+                continue
+            if (
+                search
+                and search
+                not in f"{row['id']} {row['description']} {row['target_table']} {row['rule_type']}".casefold()
+            ):
+                continue
+            kpi = (
+                "—"
+                if not active
+                else tr("No results")
+                if row["result_id"] is None
+                else tr("No checked rows")
+                if row["kpi"] is None
+                else f"{row['kpi']:.1f}%"
+            )
+            self.tree.insert(
+                "",
+                "end",
+                iid=str(row["id"]),
+                values=(
+                    row["id"],
+                    row["description"],
+                    row["target_table"],
+                    "● " + tr("Active rule") if active else "○ " + tr("Inactive rule"),
+                    kpi,
+                ),
+                tags=("active" if active else "inactive",),
+            )
+        if selected and self.tree.exists(selected[0]):
+            self.tree.selection_set(selected[0])
+        self.summary.set(
+            tr(
+                "Showing {shown} of {total} rules · {active} active",
+                shown=len(self.tree.get_children()),
+                total=len(self.rules),
+                active=sum(row["status"] == "ACTIVE" for row in self.rules),
+            )
+        )
+
+    def selected_rule(self):
+        selection = self.tree.selection()
+        if not selection:
+            raise AppError("Select a rule.")
+        return int(selection[0])
+
+    def open_rule(self, event=None):
+        from ui.rule_details import RuleDetailsWindow
+
+        try:
+            rule_id = self.selected_rule()
+            window = tk.Toplevel(self.root)
+            try:
+                self.details = RuleDetailsWindow(window, rule_id, self)
+            except Exception:
+                window.destroy()
+                raise
+        except Exception as error:
+            error_box(error, self.root)
 
     def get_tables(self):
         return list_tables()
@@ -230,23 +312,13 @@ class DataQualityWindow:
 
     def modify_dq_rule(self):
         try:
-            selection = self.archive_tree.selection()
-            if not selection:
-                raise AppError("Select a rule.")
-            self.rule_form(self.archive_tree.item(selection[0], "values")[0])
+            self.rule_form(self.selected_rule())
         except Exception as error:
             error_box(error, self.root)
 
     def load_archive_rules(self):
-        connection = get_connection()
-        try:
-            self.archive_tree.delete(*self.archive_tree.get_children())
-            for row in connection.execute(
-                "SELECT rule_id,version,status,created_at,description,rule_type,target_table,deactivated_by,deactivated_at FROM dq_rules_history ORDER BY history_id DESC"
-            ):
-                self.archive_tree.insert("", "end", values=row)
-        finally:
-            connection.close()
+        # Retained public entry point; history is now loaded inside rule details.
+        self.load_rules()
 
     def check_dq_panel(self):
         window = tk.Toplevel(self.root)
@@ -259,10 +331,16 @@ class DataQualityWindow:
 
     def treeview_sort_column(self, tree, col, reverse):
         rows = [(tree.set(item, col), item) for item in tree.get_children("")]
-        try:
-            rows.sort(key=lambda pair: float(pair[0]), reverse=reverse)
-        except ValueError:
-            rows.sort(reverse=reverse)
+        if col == "kpi":
+            numeric = [row for row in rows if row[0].endswith("%")]
+            missing = [row for row in rows if not row[0].endswith("%")]
+            numeric.sort(key=lambda pair: float(pair[0][:-1]), reverse=reverse)
+            rows = numeric + missing
+        else:
+            try:
+                rows.sort(key=lambda pair: float(pair[0]), reverse=reverse)
+            except ValueError:
+                rows.sort(reverse=reverse)
         for index, (_, item) in enumerate(rows):
             tree.move(item, "", index)
         tree.heading(

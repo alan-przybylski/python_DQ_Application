@@ -5,7 +5,6 @@ import pytest
 
 from database.connection import get_connection, initialize_database
 from logic import csv_upload, dq_report, login_functions
-from scripts.migrate_mysql_to_sqlite import migrate_snapshot, verify_snapshot, TABLES
 from logic.dq_engine import run_checks, export_errors
 from logic.rules import archive_rule
 
@@ -26,8 +25,9 @@ def notices(monkeypatch):
 
 def test_users_survive_restart_and_existing_password_interface(sqlite_database):
     login_functions.create_user("Żaneta", "Valid123", "admin")
-    assert login_functions.login_user("ŻANETA", "Valid123") == (
-        "ŻANETA",
+    assert login_functions.login_user("ŻANETA", "Valid123")[0] is None
+    assert login_functions.login_user("Żaneta", "Valid123") == (
+        "Żaneta",
         "superuser",
         None,
     )
@@ -178,52 +178,3 @@ def test_archive_rule_preserves_old_version(sqlite_database, notices):
         ).fetchone() == (1, "1.2", "demo")
     finally:
         connection.close()
-
-
-def empty_snapshot(database):
-    connection = get_connection(database)
-    try:
-        tables = {}
-        for table in TABLES:
-            columns = [
-                row[1]
-                for row in connection.execute(f'PRAGMA table_info("{table}")')
-                if row[1] != "run_id"
-            ]
-            cursor = connection.execute(f'SELECT {",".join(columns)} FROM "{table}"')
-            tables[table] = {
-                "columns": [column[0] for column in cursor.description],
-                "rows": cursor.fetchall(),
-                "next_id": 20,
-            }
-        return {"tables": tables, "active_rules": [], "kpi": []}
-    finally:
-        connection.close()
-
-
-def test_migration_preserves_records_and_refuses_overwrite(sqlite_database, tmp_path):
-    login_functions.create_user("original", "Original1", "superuser")
-    snapshot = empty_snapshot(sqlite_database)
-    destination = tmp_path / "migrated.db"
-    report = migrate_snapshot(snapshot, destination)
-    assert report["tables"]["users"]["rows"] == 1
-    connection = get_connection(destination)
-    try:
-        verify_snapshot(connection, snapshot)
-        assert connection.execute(
-            "SELECT seq FROM sqlite_sequence WHERE name='users'"
-        ).fetchone() == (19,)
-    finally:
-        connection.close()
-    with pytest.raises(FileExistsError):
-        migrate_snapshot(snapshot, destination)
-
-
-def test_bad_migration_never_activates_partial_database(sqlite_database, tmp_path):
-    snapshot = empty_snapshot(sqlite_database)
-    snapshot["tables"]["users"]["columns"].append("unknown_column")
-    destination = tmp_path / "must_not_exist.db"
-    with pytest.raises(ValueError):
-        migrate_snapshot(snapshot, destination)
-    assert not destination.exists()
-    assert list(tmp_path.glob("*.migration-*")) == []

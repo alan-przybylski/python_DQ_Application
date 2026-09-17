@@ -8,6 +8,15 @@ or security boundary around the SQLite file.
   checked explicitly. Existing password hashes are never reset by migrations.
 - Only active superusers administer users; the last active superuser is protected
   from demotion/deactivation. Filesystem access can bypass all application roles.
+- Sign-in requires exact username spelling and case, independently of legacy
+  database comparison rules. Password verification remains case-sensitive.
+- Permanent rule deletion requires an active superuser in the transaction itself,
+  not merely a visible button. Confirmation removes all of that rule's history;
+  existing exports and backups are outside the deletion scope.
+- Databricks uses browser OAuth and read-only source queries. Saved profiles contain
+  connection settings, never passwords or tokens, and remain Git-ignored beside
+  the selected database. They are shared within a local workspace, not encrypted
+  credentials or an account-level security boundary.
 - Rule execution is read-only, restricted to dataset tables, output-validated and
   time-limited. This is not an operating-system sandbox; use trusted SQL authors.
 - CSV exports protect spreadsheet formula prefixes by default. Raw export is an

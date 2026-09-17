@@ -1,1 +1,1 @@
-"""One-off database setup and migration commands."""
+"""Local SQLite setup, demo, launcher and screenshot utilities."""

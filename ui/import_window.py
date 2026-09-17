@@ -26,6 +26,14 @@ class ImportWindow:
         header(root, "Import CSV", username)
         footer(root, self.go_back, time_var)
         root.protocol("WM_DELETE_WINDOW", self.go_back)
+        sources = tk.Frame(root)
+        sources.pack(fill="x", padx=24, pady=(6, 0))
+        tk.Button(
+            sources, text=tr("Import from Databricks"), command=self.open_databricks
+        ).pack(side="left")
+        tk.Button(
+            sources, text=tr("Edit table columns"), command=self.open_table_editor
+        ).pack(side="right")
         controls = tk.Frame(root)
         controls.pack(fill="x", padx=20, pady=(10, 4))
         self.mode = tk.StringVar(value="existing")
@@ -397,3 +405,27 @@ class ImportWindow:
     def go_back(self):
         self.root.destroy()
         self.dashboard_root.deiconify()
+
+    def refresh_tables(self):
+        tables = list_tables()
+        self.table_selector.configure(values=tables)
+        if self.table_var.get() not in tables:
+            self.table_var.set(tables[0] if tables else "")
+        if self.mode.get() == "existing":
+            self.update_columns()
+
+    def open_databricks(self):
+        from ui.databricks_window import DatabricksWindow
+
+        window = tk.Toplevel(self.root)
+        DatabricksWindow(window, self.username, self.root, self.refresh_tables)
+        self.root.withdraw()
+
+    def open_table_editor(self):
+        from ui.table_editor import TableEditor
+
+        window = tk.Toplevel(self.root)
+        TableEditor(
+            window, self.username, self.root, self.refresh_tables, self.table_var.get()
+        )
+        self.root.withdraw()

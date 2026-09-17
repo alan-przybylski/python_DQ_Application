@@ -1,6 +1,6 @@
--- V1 baseline for the original MySQL import. initialize_database applies
+-- SQLite V1 baseline. initialize_database applies
 -- additive migrations.py afterwards to add the V2 run-history model.
--- Timestamp strings use local time, matching the original desktop MySQL session.
+-- Timestamp strings use local time to preserve existing history.
 CREATE TABLE IF NOT EXISTS customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT COLLATE MYSQL_AI_CI,

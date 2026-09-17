@@ -6,7 +6,7 @@ Choose **EN** or **PL** at sign-in. The following labels use EN.
 
 ## Investigate a quality issue
 
-1. Open **Rules & quality results → Quality report**. Seeded runs show three
+1. Open **Quality report** from the main menu. Seeded runs show three
    cleanup stages; use the run selector to inspect their KPI and failed records.
 2. Return to **Import CSV**, select **Existing table → customers**, and choose
    `samples/customers_with_issues.csv`. Review the preview/mapping, then **Import**.
@@ -46,6 +46,17 @@ comma, semicolon, tab or pipe delimiters. Repeated IDs within one file are rejec
 IDs already in the database update matching records.
 
 ## Rule contract
+
+**Rule library** contains one searchable/filterable row per rule, including
+inactive rules. Double-click a row for **Definition**, **Results** and
+**Version history**. The last tab lets you view older definitions and compare
+their SQL with the current version. Editing still requires deactivation and
+creates a new active version; old results stay intact. The list's KPI is for the
+current version only—"No results" is not replaced with a previous version's KPI.
+
+For Databricks import/refresh and existing-column editing, see the
+[connection and safety guide](DATABRICKS.md). Both features are available under
+**01 Import CSV**, alongside the existing CSV workflow.
 
 For a table containing `id` and `age`:
 

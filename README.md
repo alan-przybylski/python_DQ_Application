@@ -7,7 +7,7 @@
 ![SQLite](https://img.shields.io/badge/Storage-SQLite-146C72?logo=sqlite&logoColor=white)
 ![Desktop](https://img.shields.io/badge/Desktop-Tkinter-12243A)
 
-**Turn CSV files into traceable data quality checks — without a database server.**
+**Turn CSV files and Databricks snapshots into traceable, local data quality checks.**
 
 A local Python / SQL / Data Quality portfolio project by **Alan Przybylski**.
 Import a dataset, define SQL rules, run checks, and investigate failed records
@@ -16,14 +16,14 @@ clean history, separate from the original course project.
 
 ![Actual report: KPI cards, quality trend and failed records](docs/images/results.png)
 
-[Try the demo](#quick-start) · [Walkthrough](docs/DEMO.md) · [Architecture](docs/ARCHITECTURE.md) · [V2 changes](docs/V2_CHANGES.md)
+[Try the demo](#quick-start) · [Walkthrough](docs/DEMO.md) · [Architecture](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
 ## One workspace, from import to investigation
 
 | Step | What you can do |
 |---|---|
-| Import | Choose an existing table and its CSV template, or create a new table from CSV/manual columns |
-| Prepare | Preview data, map columns, choose types and required fields; import all rows or none |
+| Import | CSV with table-specific templates, or read-only Databricks downloads into local SQLite |
+| Prepare | Preview data, map columns, edit table columns with backup and guarded type conversion |
 | Define | Add SQL rules for any dataset, archive versions and revise inactive rules |
 | Run | Execute one rule or all active rules; each execution gets its own persistent run ID |
 | Investigate | View KPI cards, trends and searchable failed records for the selected run |
@@ -50,9 +50,27 @@ A **fresh** demo uses **`demo` / `Demo2026`**.
 Existing demo databases are reused, never reset; their passwords remain unchanged.
 Demo data lives in `data/demo.db`, separate from your private `data/app.db`.
 
-Open **Rules & quality results → Quality report**. Import
+Open **Quality report** directly from the main menu. Import
 `samples/customers_with_issues.csv`, run all customer checks, inspect the failed
 records, then repeat with `samples/customers_clean.csv`.
+
+### Double-click launch on Windows
+
+After the one-time `uv sync --frozen` setup, double-click:
+
+- `Start DQ Studio.cmd` for your local application database.
+- `Start DQ Studio Demo.cmd` for the isolated synthetic demo.
+
+The launchers use the project's own `.venv` and work from any folder, including
+paths with spaces. A console may flash briefly; the application then runs without
+a persistent terminal. Missing environments display setup instructions. Startup
+errors display a dialog; diagnostics are in the Git-ignored `data/launcher.log`
+(replaced on each launch). No dependencies are installed automatically.
+
+For a desktop shortcut, right-click the normal launcher and choose **Send to →
+Desktop (create shortcut)**. Keep the launcher in the project folder. After updates,
+the same shortcut continues to work; only moving the project requires changing it.
+Close the app before updating and run `uv sync --frozen` when dependencies change.
 
 ### Application tour
 
@@ -70,6 +88,8 @@ uv run --frozen python main.py
 The setup command creates the first **superuser** only on an empty installation.
 Passwords need **6 characters, an uppercase letter and a digit**. Existing users
 and passwords are retained. The account form explains unmet requirements.
+Usernames and passwords are case-sensitive at sign-in: `admin` and `Admin`
+are not interchangeable. Existing account names and password hashes are unchanged.
 
 Without uv, create a Python 3.14 virtual environment, install
 `requirements.txt`, then run `python main.py`.
@@ -80,7 +100,7 @@ Without uv, create a Python 3.14 virtual environment, install
 - **Traceable results:** a DQ run links user, time, table, KPI and field-level findings.
 - **Guarded SQL:** read-only dataset access, output validation and a per-rule execution timeout.
 - **Safe upgrades:** additive SQLite migrations, automatic backup, no invented links for legacy history.
-- **Explicit permissions:** account changes are checked in the service layer, not only hidden in the UI.
+- **Explicit permissions:** account changes and permanent rule deletion require an active superuser, checked in the service layer.
 - **Reproducible demo:** locked dependencies, synthetic samples and automated Windows/Linux tests.
 
 ## Project structure
@@ -91,7 +111,7 @@ ui/               Tkinter screens, shared widgets and theme
 logic/            Accounts, datasets, rule execution, history and exports
 database/         SQLite connections, original schema, additive migrations
 config/           Paths, database selection and PL/EN translations
-scripts/          Demo, first-user setup, MySQL import, screenshot capture
+scripts/          Demo, first-user setup, desktop launcher, screenshot capture
 samples/          Fictional CSV inputs
 tests/            Behavioral regression tests and actual Tkinter workflows
 docs/             Walkthrough, architecture and actual screenshots
@@ -109,8 +129,44 @@ uv run --frozen pytest -q
 ```
 
 Tests use temporary databases, never private application data. GUI checks cover
-15 views in PL/EN at two screen sizes and an import → rule → report → export flow.
+20 views in PL/EN at two screen sizes and an import → rule → report → export flow.
 CI runs core tests on Windows and Linux, plus GUI tests on Windows.
+
+## Databricks and table editing
+
+The **Rule library** now shows one row per rule, with search, table/status filters
+and the latest KPI for the current version only. Open a rule for **Definition**,
+**Results** and **Version history**, including a color-coded SQL comparison. Existing
+definitions, archived versions and result history are retained without a migration.
+
+**Delete rule permanently** is available only in a rule's details for superusers;
+regular users cannot see it. The service rechecks the account's current role and
+active status inside the deletion transaction, independently of UI visibility. Explicit
+confirmation removes the rule, all its versions, KPI, field results and execution
+errors in one transaction. Runs belonging only to that rule are removed; shared
+runs retain other rules' results and their counters/status are updated. Cancel is
+the default. Use **Deactivate** instead if history should remain. Dataset rows,
+existing exported files and backups are not deleted; there is no in-app undo.
+
+In **01 Import CSV**, choose **Import from Databricks** or **Edit table columns**.
+The Databricks connector uses browser OAuth and reads a selected
+`catalog.schema.table` or view. Download a preview, inspect column mapping, then
+explicitly save a new SQLite table or refresh an earlier snapshot of the same
+source. DQ rules query that local copy, not your remote warehouse.
+
+Named **connection profiles** persist hostname, HTTP path, catalog, schema and an
+optional table locally. Choose, update or delete profiles in the Databricks screen;
+the last selected profile is restored on reopening. No passwords or tokens are
+saved. Profiles are separate per SQLite workspace (including demo) and Git-ignored.
+
+Column editing supports adding, renaming, deleting, type changes and required
+fields. A database backup precedes every change; unsafe conversions, changes to
+`id`, and changes to columns used by current active/inactive rules are rejected.
+Templates read the updated schema automatically. No existing DQ history is reset.
+
+See the [Databricks setup and safety guide](docs/DATABRICKS.md) for connection
+details, refresh semantics, supported types and a small test table.
+Remote reads are tested with fakes; live-account validation is still pending.
 
 ## Storage and limitations
 
@@ -121,7 +177,8 @@ CSV exports are explicit snapshots saved where you choose.
 Old KPI and findings are preserved; only new executions have linked run history.
 This is a local portfolio app, not a production multi-user security boundary:
 anyone who can access the SQLite file can bypass application roles. Large imports
-and checks still run on the UI thread.
+and checks still run on the UI thread. Databricks network downloads run in a
+background worker with row/memory guards; local snapshot saves remain synchronous.
 
 Read the [architecture and limitations](docs/ARCHITECTURE.md#current-limitations)
 and [security notes](SECURITY.md) before using sensitive data.

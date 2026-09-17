@@ -92,20 +92,18 @@ Initialization loads the original seven-table baseline, then applies the
 idempotent V2 migration. Established databases receive a SQLite backup before
 schema or role changes. Foreign keys are enabled for every connection.
 
-The optional MySQL importer still accepts exactly the original seven-table
-snapshot. It verifies every row, existing rule output, historical KPI and integrity
-before publishing a new SQLite file, refusing to overwrite a destination.
-It does not migrate arbitrary new MySQL tables. Subsequent app initialization
-normalizes legacy roles.
+The application uses SQLite only. The one-time MySQL importer and its driver
+have been removed. SQLite schema upgrades remain supported.
 
 `MYSQL_AI_CI`, `REGEXP` and `REGEXP_LIKE` preserve tested legacy use cases, not
-all MySQL collation or ICU behavior. New rules should use SQLite syntax.
+all MySQL collation or ICU behavior. These are local SQLite compatibility helpers;
+they do not connect to MySQL or require its driver. New rules should use SQLite syntax.
 
 ## Testing boundaries
 
 Core tests cover passwords, authorization, migration backups, unchanged historical
 rows, atomic rollback including DDL, mapping, leading-zero text IDs, CSV exports,
-rule restrictions, partial runs and independent histories. GUI tests open 15
+rule restrictions, partial runs and independent histories. GUI tests open 20
 views in both languages at 1920×1080 and 1366×768, and exercise an actual
 import → new-table rule → run → error export workflow.
 
@@ -115,10 +113,27 @@ semantically rather than overwriting old hashes to claim nothing changed.
 
 ## Current limitations
 
+The unified rule library and its Definition/Results/Version history tabs are
+read-only projections of existing tables; no rule-history migration is needed.
+Current-version KPI never falls back to an earlier version. Legacy results without
+run IDs are not heuristically joined to field errors. History previews deduplicate
+version labels without deleting any stored archive entries.
+
+Databricks profiles are non-secret JSON preferences beside each SQLite workspace.
+Atomic replacement preserves the existing file if saving fails. Only the five
+connection fields are accepted; source table is optional until downloading.
+Demo and normal workspaces have separate files; local account users share the
+profiles within a workspace. Profile selection does not authenticate remotely.
+
 - This is trusted local desktop software, not a production multi-user platform.
   File access bypasses login and role permissions; SQLite files are not encrypted.
 - CSV parsing and rule results are held in memory; large workloads block the UI.
   Query timeout limits execution, not a hard process-wide memory budget.
+- Databricks downloads use a background worker, browser OAuth and a SELECT-only
+  connector. Preview/save are separate steps. Refresh uses a backup and an atomic
+  local replacement, not remote writes. See [DATABRICKS.md](DATABRICKS.md).
+- Dataset column editing uses guarded DDL/rebuilds, lossless value validation and
+  pre-change backups. Complex unmanaged schemas are refused, not simplified.
 - Dates use local wall time, not timezone-aware UTC.
 - Rule SQL, dataset names, stored messages and database error details are not
   machine-translated. Native file dialogs follow the operating system language.

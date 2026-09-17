@@ -41,7 +41,7 @@ def login_user(username: str, password: str):
     connection = get_connection()
     try:
         row = connection.execute(
-            "SELECT password_hash,role,active FROM users WHERE username=?", (username,)
+            "SELECT password_hash,role,active FROM users WHERE username COLLATE BINARY=?", (username,)
         ).fetchone()
         if not row:
             return None, None, tr("User not found.")

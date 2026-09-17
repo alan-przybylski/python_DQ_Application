@@ -40,7 +40,8 @@ class DashboardWindow:
         actions.pack(expand=True, padx=24, pady=16)
         choices = [
             ("Import CSV", self.load_csv_and_log),
-            ("Rules & quality results", self.open_dq_panel),
+            ("Rule library", self.open_dq_panel),
+            ("Quality report", self.open_quality_report),
             ("Export table", self.open_export),
             ("Import history", self.open_file_history),
         ]
@@ -110,6 +111,11 @@ class DashboardWindow:
         from ui.file_history import FileHistory
 
         self.open_window(FileHistory)
+
+    def open_quality_report(self):
+        from ui.check_dq_panel import CheckDqPanel
+
+        self.open_window(CheckDqPanel)
 
     def logout_user(self):
         if self.clock_id:

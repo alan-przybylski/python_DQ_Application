@@ -70,7 +70,7 @@ class RuleDetailsWindow:
     def definition(self, page, current):
         metadata = f"{tr('Description')}: {current['description'] or '—'}\n{tr('Rule type')}: {current['rule_type']}\n{tr('Error message')}: {current['error_message'] or '—'}"
         readonly_text(page, metadata, height=3, expand=False)
-        tk.Label(page, text=tr("SQL query"), anchor="w").pack(fill="x")
+        tk.Label(page, text=tr("SQL query") + "  ·  dq_check: 0 = PASS, 1 = FAIL", anchor="w").pack(fill="x")
         readonly_text(page, current["sql_query"] or "")
         actions = tk.Frame(page)
         actions.pack(fill="x", pady=4)

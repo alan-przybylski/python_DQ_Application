@@ -79,7 +79,7 @@ def test_rules_protect_used_columns_but_allow_unrelated_columns(
     sqlite_database, status
 ):
     execute(
-        "INSERT INTO dq_rules(version,status,description,rule_type,target_table,sql_query) VALUES('1.0',?,'Name','required','customers','SELECT c.id, c.name, 1 AS dq_check FROM customers AS c')",
+        "INSERT INTO dq_rules(version,status,description,rule_type,target_table,sql_query) VALUES('1.0',?,'Name','required','customers','SELECT c.id, c.name, 0 AS dq_check FROM customers AS c')",
         (status,),
     )
     for action in ("modify", "drop"):
@@ -92,7 +92,7 @@ def test_rules_protect_used_columns_but_allow_unrelated_columns(
 def test_join_dependency_protected_even_with_other_target_table(sqlite_database):
     execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER)")
     execute(
-        "INSERT INTO dq_rules(version,rule_type,target_table,sql_query) VALUES('1.0','test','orders','SELECT o.id,c.name,1 AS dq_check FROM orders o JOIN customers c ON o.customer_id=c.id')"
+        "INSERT INTO dq_rules(version,rule_type,target_table,sql_query) VALUES('1.0','test','orders','SELECT o.id,c.name,0 AS dq_check FROM orders o JOIN customers c ON o.customer_id=c.id')"
     )
     with pytest.raises(AppError):
         edit_column("customers", "drop", "name")
@@ -121,7 +121,7 @@ def test_advanced_schema_is_not_silently_rebuilt(sqlite_database):
 
 def test_history_remains_unchanged(sqlite_database):
     execute(
-        "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','customers','SELECT id,name,1 AS dq_check FROM customers')"
+        "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','customers','SELECT id,name,0 AS dq_check FROM customers')"
     )
     execute(
         "INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count) VALUES(1,'1.0',10,2)"
@@ -141,7 +141,7 @@ def test_empty_table_rebuild_keeps_autoincrement_high_water_mark(sqlite_database
 
 def test_wildcard_and_invalid_rules_fail_closed(sqlite_database):
     execute(
-        "INSERT INTO dq_rules(version,rule_type,target_table,sql_query) VALUES('1.0','test','customers','SELECT *,1 AS dq_check FROM customers')"
+        "INSERT INTO dq_rules(version,rule_type,target_table,sql_query) VALUES('1.0','test','customers','SELECT *,0 AS dq_check FROM customers')"
     )
     with pytest.raises(AppError):
         edit_column("customers", "add", name="country")

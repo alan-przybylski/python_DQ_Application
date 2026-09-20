@@ -15,7 +15,7 @@ def execute(sql, params=()):
 
 def seed():
     execute(
-        "INSERT INTO dq_rules(id,status,version,description,rule_type,target_table,sql_query) VALUES(1,'ACTIVE','1.1','Name','required','customers','SELECT id,name,1 AS dq_check FROM customers'), (2,'INACTIVE','1.0','Age','range','customers','SELECT id,age,1 AS dq_check FROM customers')"
+        "INSERT INTO dq_rules(id,status,version,description,rule_type,target_table,sql_query) VALUES(1,'ACTIVE','1.1','Name','required','customers','SELECT id,name,0 AS dq_check FROM customers'), (2,'INACTIVE','1.0','Age','range','customers','SELECT id,age,0 AS dq_check FROM customers')"
     )
     execute(
         "INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count) VALUES(1,'1.0',20,0),(2,'1.0',10,2)"
@@ -44,7 +44,7 @@ def test_history_deduplicates_current_without_changing_saved_rows(sqlite_databas
                 version,
                 json.dumps(
                     {
-                        "sql_query": "SELECT id,name,0 AS dq_check FROM customers",
+                        "sql_query": "SELECT id,name,1 AS dq_check FROM customers",
                         "error_message": "Old error",
                     }
                 ),
@@ -53,7 +53,7 @@ def test_history_deduplicates_current_without_changing_saved_rows(sqlite_databas
     before = execute("SELECT * FROM dq_rules_history")
     data = rule_details(1)
     assert [row["version"] for row in data["versions"]] == ["1.1", "1.0"]
-    assert "0 AS dq_check" in data["versions"][1]["sql_query"]
+    assert "1 AS dq_check" in data["versions"][1]["sql_query"]
     assert data["result"] is None
     assert execute("SELECT * FROM dq_rules_history") == before
 
@@ -72,7 +72,7 @@ def test_latest_results_only_link_errors_by_run_and_version(sqlite_database):
         (2, "1.1", "current"),
     ]:
         execute(
-            "INSERT INTO dq_field_results(rule_id,rule_version,record_id,field_name,field_value,test_result,error_message,target_table,run_id) VALUES(1,?,?,'name','',0,'missing','customers',?)",
+            "INSERT INTO dq_field_results(rule_id,rule_version,record_id,field_name,field_value,test_result,error_message,target_table,run_id) VALUES(1,?,?,'name','',1,'missing','customers',?)",
             (version, record, run),
         )
     data = rule_details(1)
@@ -86,7 +86,7 @@ def test_legacy_results_do_not_invent_links(sqlite_database):
         "INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count) VALUES(1,'1.1',1,1)"
     )
     execute(
-        "INSERT INTO dq_field_results(rule_id,rule_version,record_id,field_name,field_value,test_result,error_message,target_table) VALUES(1,'1.1','legacy','name','',0,'missing','customers')"
+        "INSERT INTO dq_field_results(rule_id,rule_version,record_id,field_name,field_value,test_result,error_message,target_table) VALUES(1,'1.1','legacy','name','',1,'missing','customers')"
     )
     assert rule_details(1)["errors"] == []
 

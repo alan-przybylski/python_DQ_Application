@@ -124,6 +124,9 @@ def test_additive_migration_preserves_legacy_rows_and_weak_login(tmp_path, monke
     initialize_database(path)
     initialize_database(path)
     for table, (columns, rows) in old_tables.items():
+        if table == "dq_field_results":
+            index = columns.index("test_result")
+            rows = [tuple(1 - value if i == index else value for i, value in enumerate(row)) for row in rows]
         assert query(f'SELECT {",".join(columns)} FROM "{table}"') == rows
     assert query("SELECT run_id FROM dq_results") == [(None,)]
     assert query("SELECT run_id FROM dq_field_results") == [(None,)]
@@ -269,7 +272,7 @@ def rules(accounts):
         "Adult",
         "range",
         "customers",
-        "SELECT id, age, CASE WHEN age >= 18 THEN 1 ELSE 0 END AS dq_check FROM customers",
+        "SELECT id, age, CASE WHEN age >= 18 THEN 0 ELSE 1 END AS dq_check FROM customers",
         "Must be an adult",
     )
     return query("SELECT id FROM dq_rules")[0][0]
@@ -301,13 +304,13 @@ def test_runs_do_not_mix_errors_and_survive_restart(rules, tmp_path):
         "DROP TABLE customers",
         "PRAGMA table_info(customers)",
         "ATTACH DATABASE ':memory:' AS other",
-        "SELECT id,password_hash,1 AS dq_check FROM users",
+        "SELECT id,password_hash,0 AS dq_check FROM users",
         "SELECT id,name,'0' AS dq_check FROM customers",
         "SELECT id,name,2 AS dq_check FROM customers",
-        "SELECT NULL AS id,name,0 AS dq_check FROM customers",
-        "SELECT name,age,1 AS dq_check FROM customers",
+        "SELECT NULL AS id,name,1 AS dq_check FROM customers",
+        "SELECT name,age,0 AS dq_check FROM customers",
         "SELECT id,name,name AS dq_check FROM customers",
-        "SELECT id,name,1 AS dq_check FROM customers; DELETE FROM customers",
+        "SELECT id,name,0 AS dq_check FROM customers; DELETE FROM customers",
     ],
 )
 def test_rule_sql_is_read_only_and_contract_checked(rules, sql):

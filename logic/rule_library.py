@@ -84,7 +84,7 @@ def rule_details(rule_id):
         errors = []
         if result and result["run_id"] is not None:
             errors = connection.execute(
-                "SELECT record_id,field_name,field_value,error_message FROM dq_field_results WHERE run_id=? AND rule_id=? AND rule_version IS ? AND test_result=0 ORDER BY id LIMIT 500",
+                "SELECT record_id,field_name,field_value,error_message FROM dq_field_results WHERE run_id=? AND rule_id=? AND rule_version IS ? AND test_result=1 ORDER BY id LIMIT 500",
                 (result["run_id"], rule_id, current["version"]),
             ).fetchall()
         return {

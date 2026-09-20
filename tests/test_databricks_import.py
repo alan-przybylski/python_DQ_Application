@@ -121,7 +121,7 @@ def test_new_snapshot_preserves_duplicate_source_ids_null_and_empty(sqlite_datab
 def test_refresh_has_backup_replaces_not_appends_and_keeps_history(sqlite_database):
     save_snapshot(snapshot(), "db_customers", "admin")
     query(
-        "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','db_customers','SELECT id,name,1 AS dq_check FROM db_customers')"
+        "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','db_customers','SELECT id,name,0 AS dq_check FROM db_customers')"
     )
     query(
         "INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count) VALUES(1,'1.0',2,1)"

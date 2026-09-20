@@ -187,8 +187,8 @@ class DataQualityWindow:
     def add_rule_window(self):
         self.rule_form()
 
-    def rule_form(self, rule_id=None):
-        values = ("", "", "", "", "")
+    def rule_form(self, rule_id=None, initial_sql="", initial_table=""):
+        values = ("", "", initial_table, "", initial_sql)
         if rule_id is not None:
             connection = get_connection()
             try:
@@ -258,7 +258,7 @@ class DataQualityWindow:
             names = [column["name"] for column in table_columns(table_name)]
             field = next((name for name in names if name != "id"), None)
             expression = quote(field) if field else "id AS checked_value"
-            generated_sql = f"SELECT id, {expression},\n       1 AS dq_check\nFROM {quote(table_name)};"
+            generated_sql = f"SELECT id, {expression},\n       0 AS dq_check\nFROM {quote(table_name)};"
             sql_entry.delete("1.0", "end")
             sql_entry.insert("1.0", generated_sql)
 
@@ -268,7 +268,7 @@ class DataQualityWindow:
         tk.Label(
             form,
             text=tr(
-                "Rule output must contain id, the tested field as the second column, and dq_check (0 or 1)."
+                "Rule output must contain id, the tested field as the second column, and dq_check (0 = PASS, 1 = FAIL)."
             ),
             wraplength=780,
             justify="left",

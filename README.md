@@ -72,6 +72,20 @@ Desktop (create shortcut)**. Keep the launcher in the project folder. After upda
 the same shortcut continues to work; only moving the project requires changing it.
 Close the app before updating and run `uv sync --frozen` when dependencies change.
 
+### SQL editor
+
+Open **SQL editor** from the workspace. Select a dataset table and click
+**Preview table**, or write SQL and press **Ctrl+Enter**. A selection runs on its
+own; otherwise the whole editor runs. Queries read the current application database
+(or the isolated demo database when launched with `--demo`).
+
+The resizable view shows tables and columns beside the editor and results.
+Previews are read-only, limited to 500 displayed rows and 10 seconds, and can be
+cancelled. Internal application tables are excluded, as in the rule engine.
+Use **Rule template** for a starting check, then **Create rule** to transfer the
+SQL into the existing rule form. Choose the target table and complete the details;
+saving validates the full rule using the existing rule engine.
+
 ### Application tour
 
 Real application windows, captured using temporary synthetic data only:
@@ -81,12 +95,20 @@ Real application windows, captured using temporary synthetic data only:
 ### Use your own data
 
 ```powershell
-uv run --frozen python -m scripts.init_db --admin your_login
 uv run --frozen python main.py
 ```
 
-The setup command creates the first **superuser** only on an empty installation.
-Passwords need **6 characters, an uppercase letter and a digit**. Existing users
+On first normal launch, an empty database opens **Create your administrator**.
+Choose a username (prefilled with `Admin`), enter and confirm your own password,
+then click **Create account**. The first account is a **superuser** and the app
+opens immediately. Later launches show the normal sign-in screen.
+Only a password hash is stored in the local database; no default administrator
+password is distributed. Existing accounts and passwords are never replaced or
+reset. The separate demo still uses its own account.
+
+For a custom first account, run `uv run --frozen python -m scripts.init_db --admin your_login`
+before the first normal launch. Passwords entered through account management
+need **6 characters, an uppercase letter and a digit**. Existing users
 and passwords are retained. The account form explains unmet requirements.
 Usernames and passwords are case-sensitive at sign-in: `admin` and `Admin`
 are not interchangeable. Existing account names and password hashes are unchanged.
@@ -95,6 +117,13 @@ Without uv, create a Python 3.14 virtual environment, install
 `requirements.txt`, then run `python main.py`.
 
 ## Engineering highlights
+
+All rule outputs use **`dq_check = 0` for PASS** and **`dq_check = 1` for FAIL**.
+For example: `CASE WHEN email IS NULL THEN 1 ELSE 0 END AS dq_check`.
+Existing databases are backed up in `data/backups` and migrated once at startup:
+legacy SQL is wrapped to invert its output, including archived definitions,
+and detailed result flags are inverted. Historical pass/fail counts and KPI stay
+unchanged. Previously exported files remain in their original convention.
 
 - **Atomic writes:** CSV rows, optional new table and import log commit together.
 - **Traceable results:** a DQ run links user, time, table, KPI and field-level findings.

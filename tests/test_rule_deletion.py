@@ -26,7 +26,7 @@ def history(sqlite_database):
     sql("INSERT INTO customers(name,age) VALUES('Ada',30),('Bob',20)")
     for rid in (1, 2):
         sql(
-            "INSERT INTO dq_rules(id,version,description,rule_type,target_table,sql_query) VALUES(?,'1.0','Test','test','customers','SELECT id,name,0 AS dq_check FROM customers')",
+            "INSERT INTO dq_rules(id,version,description,rule_type,target_table,sql_query) VALUES(?,'1.0','Test','test','customers','SELECT id,name,1 AS dq_check FROM customers')",
             (rid,),
         )
     shared = run_checks("customers", "admin")
@@ -72,7 +72,7 @@ def test_hard_delete_keeps_other_rule_and_reconciles_shared_runs(history):
 
 def test_other_rules_execution_errors_are_kept(history):
     sql(
-        "UPDATE dq_rules SET status='ACTIVE',sql_query='SELECT id,name,1 AS dq_check FROM customers' WHERE id=1"
+        "UPDATE dq_rules SET status='ACTIVE',sql_query='SELECT id,name,0 AS dq_check FROM customers' WHERE id=1"
     )
     sql("UPDATE dq_rules SET sql_query='SELECT missing FROM customers' WHERE id=2")
     rid = run_checks("customers", "admin")

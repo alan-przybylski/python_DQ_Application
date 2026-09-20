@@ -9,6 +9,14 @@ from database.connection import get_connection
 ROLES = ("superuser", "user")
 
 
+def needs_first_admin():
+    connection = get_connection()
+    try:
+        return connection.execute("SELECT 1 FROM users LIMIT 1").fetchone() is None
+    finally:
+        connection.close()
+
+
 def password_checks(password):
     return [
         ("At least 6 characters", len(password) >= 6),

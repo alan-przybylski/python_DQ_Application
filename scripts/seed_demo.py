@@ -19,21 +19,21 @@ RULES = (
         "Email format",
         "format",
         "Email must contain @ and a domain suffix.",
-        "SELECT id, email, CASE WHEN email LIKE '%_@_%._%' THEN 1 ELSE 0 END AS dq_check FROM customers",
+        "SELECT id, email, CASE WHEN email LIKE '%_@_%._%' THEN 0 ELSE 1 END AS dq_check FROM customers",
     ),
     (
         2,
         "Age range: 18–120",
         "range",
         "Age must be between 18 and 120.",
-        "SELECT id, age, CASE WHEN age BETWEEN 18 AND 120 THEN 1 ELSE 0 END AS dq_check FROM customers",
+        "SELECT id, age, CASE WHEN age BETWEEN 18 AND 120 THEN 0 ELSE 1 END AS dq_check FROM customers",
     ),
     (
         3,
         "Customer name required",
         "completeness",
         "Customer name must not be empty.",
-        "SELECT id, name, CASE WHEN LENGTH(TRIM(name)) > 0 THEN 1 ELSE 0 END AS dq_check FROM customers",
+        "SELECT id, name, CASE WHEN LENGTH(TRIM(name)) > 0 THEN 0 ELSE 1 END AS dq_check FROM customers",
     ),
 )
 
@@ -69,6 +69,7 @@ def create_demo_database(destination=None):
                 )
         finally:
             connection.close()
+        initialize_database(destination)
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +129,7 @@ def create_demo_database(destination=None):
                     cursor.row_factory = dict_row_factory
                     records = cursor.execute(sql).fetchall()
                     cursor.close()
-                    passed = sum(record["dq_check"] for record in records)
+                    passed = sum(record["dq_check"] == 0 for record in records)
                     connection.execute(
                         """INSERT INTO dq_results(rule_id,rule_version,failed_count,passed_count,timestamp,run_id)
                         VALUES(?,'1.0',?,?,?,?)""",
@@ -148,7 +149,7 @@ def create_demo_database(destination=None):
                                 if record[field] is not None
                                 else None,
                                 record["dq_check"],
-                                "" if record["dq_check"] else error,
+                                "" if record["dq_check"] == 0 else error,
                                 timestamp,
                                 run_id,
                             ),

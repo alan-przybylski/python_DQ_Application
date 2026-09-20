@@ -66,7 +66,7 @@ After importing as `db_customers`, one local SQLite rule is:
 
 ```sql
 SELECT id, age,
-       CASE WHEN age BETWEEN 18 AND 120 THEN 1 ELSE 0 END AS dq_check
+       CASE WHEN age BETWEEN 18 AND 120 THEN 0 ELSE 1 END AS dq_check
 FROM db_customers;
 ```
 

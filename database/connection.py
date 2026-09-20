@@ -59,6 +59,9 @@ def initialize_database(database=None):
         connection.commit()
         from database.migrations import upgrade
         upgrade(connection, destination)
+        from database.failure_flags import upgrade_failure_flags
+
+        upgrade_failure_flags(connection, destination)
     finally:
         connection.close()
 

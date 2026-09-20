@@ -75,7 +75,7 @@ Language choice is saved separately in `data/settings.json`.
 ## SQL contract and permissions
 
 A rule must return `id`, the tested field as the second column, and numeric
-`dq_check` values of 0 or 1. Other columns may be present, with unique names.
+`dq_check` values of **0 = PASS** or **1 = FAIL**. Other columns may be present, with unique names.
 The engine rejects missing IDs and malformed output. An SQLite authorizer and
 query-only mode prohibit mutation, schema operations and reads of internal tables.
 Cross-dataset SELECTs are allowed. A SQLite progress handler applies a best-effort

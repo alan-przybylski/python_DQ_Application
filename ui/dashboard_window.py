@@ -41,6 +41,7 @@ class DashboardWindow:
         choices = [
             ("Import CSV", self.load_csv_and_log),
             ("Rule library", self.open_dq_panel),
+            ("SQL editor", self.open_sql_editor),
             ("Quality report", self.open_quality_report),
             ("Export table", self.open_export),
             ("Import history", self.open_file_history),
@@ -106,6 +107,11 @@ class DashboardWindow:
         from ui.data_quality import DataQualityWindow
 
         self.open_window(DataQualityWindow)
+
+    def open_sql_editor(self):
+        from ui.sql_workspace import SqlWorkspace
+
+        self.open_window(SqlWorkspace)
 
     def open_file_history(self):
         from ui.file_history import FileHistory

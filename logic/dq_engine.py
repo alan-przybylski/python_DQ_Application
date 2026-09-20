@@ -44,13 +44,13 @@ def evaluate(connection, sql, tables):
             or len(set(names)) != len(names)
         ):
             raise AppError(
-                "Rule output must contain id, the tested field as the second column, and dq_check (0 or 1)."
+                "Rule output must contain id, the tested field as the second column, and dq_check (0 = PASS, 1 = FAIL)."
             )
         records = [dict(zip(names, row)) for row in cursor.fetchall()]
         for record in records:
             if record["dq_check"] not in (0, 1):
                 raise AppError(
-                    "Rule output must contain id, the tested field as the second column, and dq_check (0 or 1)."
+                    "Rule output must contain id, the tested field as the second column, and dq_check (0 = PASS, 1 = FAIL)."
                 )
             if record["id"] is None or str(record["id"]) == "":
                 raise AppError("Rule record id cannot be empty.")
@@ -125,7 +125,7 @@ def run_checks(table, username, rule_id=None):
             # A rule's KPI and detailed rows either both persist, or neither does.
             writer.execute("SAVEPOINT rule_result")
             try:
-                passed = sum(record["dq_check"] == 1 for record in records)
+                passed = sum(record["dq_check"] == 0 for record in records)
                 writer.execute(
                     "INSERT INTO dq_results(rule_id,rule_version,failed_count,passed_count,run_id) VALUES(?,?,?,?,?)",
                     (rid, version, len(records) - passed, passed, run_id),
@@ -142,7 +142,7 @@ def run_checks(table, username, rule_id=None):
                             field,
                             None if record[field] is None else str(record[field]),
                             record["dq_check"],
-                            "" if record["dq_check"] else error_text(message),
+                            "" if record["dq_check"] == 0 else error_text(message),
                             table,
                             run_id,
                         )
@@ -214,7 +214,7 @@ def run_details(run_id):
         ).fetchone()
         errors = connection.execute(
             """SELECT f.rule_id,f.rule_version,f.record_id,f.field_name,f.field_value,f.error_message
-            FROM dq_field_results f WHERE f.run_id=? AND f.test_result=0 ORDER BY f.id""",
+            FROM dq_field_results f WHERE f.run_id=? AND f.test_result=1 ORDER BY f.id""",
             (run_id,),
         ).fetchall()
         return {

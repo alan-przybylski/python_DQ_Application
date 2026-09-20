@@ -99,7 +99,7 @@ def seed_rule(connection):
     connection.execute(
         "INSERT INTO dq_rules(id,version,rule_type,target_table,description,sql_query) VALUES(1,'1.2','age','customers','Adult',?)",
         (
-            "SELECT id, age, CASE WHEN age > 18 THEN 1 ELSE 0 END AS dq_check FROM customers",
+            "SELECT id, age, CASE WHEN age > 18 THEN 0 ELSE 1 END AS dq_check FROM customers",
         ),
     )
     connection.commit()

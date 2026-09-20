@@ -47,11 +47,11 @@ def test_every_window_has_shared_geometry_and_visible_controls(
     connection.executescript("""
         INSERT INTO users(username,password_hash,role) VALUES('demo','test-only','superuser');
         INSERT INTO dq_rules(id,version,description,rule_type,target_table,sql_query) VALUES
-            (1,'1.1','Name required','required','customers','SELECT id,name,1 AS dq_check FROM customers');
+            (1,'1.1','Name required','required','customers','SELECT id,name,0 AS dq_check FROM customers');
         INSERT INTO dq_rules(id,version,status,description,rule_type,target_table,sql_query) VALUES
-            (2,'1.0','INACTIVE','Name required','required','customers','SELECT id,name,1 AS dq_check FROM customers');
+            (2,'1.0','INACTIVE','Name required','required','customers','SELECT id,name,0 AS dq_check FROM customers');
         INSERT INTO dq_rules_history(rule_id,version,description,rule_type,target_table,rule_params,deactivated_by) VALUES
-            (2,'1.0','Name required','required','customers','{"sql_query":"SELECT id,name,1 AS dq_check FROM customers","error_message":"Missing name"}','demo');
+            (2,'1.0','Name required','required','customers','{"sql_query":"SELECT id,name,0 AS dq_check FROM customers","error_message":"Missing name"}','demo');
         INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count,timestamp) VALUES
             (1,'1.1',8,2,'2026-09-14 12:00:00'),(1,'1.1',9,1,'2026-09-15 12:00:00');
         INSERT INTO data_load_log(table_name,file_name,row_count,loaded_by) VALUES('customers','example.csv',12,'demo');
@@ -370,7 +370,7 @@ def test_import_new_table_rule_and_report_workflow(
         text_widget.delete("1.0", "end")
         text_widget.insert(
             "1.0",
-            "SELECT id, amount, CASE WHEN amount>0 THEN 1 ELSE 0 END AS dq_check FROM orders",
+            "SELECT id, amount, CASE WHEN amount>0 THEN 0 ELSE 1 END AS dq_check FROM orders",
         )
         click(dialog, "Save changes")
 
@@ -652,10 +652,10 @@ def test_unified_rules_filter_history_and_actions(
     connection = get_connection()
     connection.executescript("""
         INSERT INTO dq_rules(id,version,status,description,rule_type,target_table,sql_query) VALUES
-        (1,'1.1','ACTIVE','Name required','required','customers','SELECT id,name,1 AS dq_check FROM customers'),
-        (2,'1.0','INACTIVE','Other check','test','orders','SELECT id,name,1 AS dq_check FROM customers');
+        (1,'1.1','ACTIVE','Name required','required','customers','SELECT id,name,0 AS dq_check FROM customers'),
+        (2,'1.0','INACTIVE','Other check','test','orders','SELECT id,name,0 AS dq_check FROM customers');
         INSERT INTO dq_rules_history(rule_id,version,description,rule_type,target_table,rule_params) VALUES
-        (1,'1.0','Old name','required','customers','{"sql_query":"SELECT id,name,0 AS dq_check FROM customers"}');
+        (1,'1.0','Old name','required','customers','{"sql_query":"SELECT id,name,1 AS dq_check FROM customers"}');
         INSERT INTO dq_results(rule_id,rule_version,passed_count,failed_count) VALUES(1,'1.0',10,0);
     """)
     connection.close()
@@ -693,7 +693,7 @@ def test_unified_rules_filter_history_and_actions(
         details.compare.set(True)
         details.show_version()
         diff = details.version_text.get("1.0", "end")
-        assert "-SELECT id,name,0" in diff and "+SELECT id,name,1" in diff
+        assert "-SELECT id,name,1" in diff and "+SELECT id,name,0" in diff
         assert details.version_text.tag_ranges("added")
         assert details.version_text.tag_ranges("removed")
         details.deactivate()
@@ -729,7 +729,7 @@ def test_delete_button_visibility_by_role(
             (role,),
         )
         connection.execute(
-            "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','customers','SELECT id,name,0 AS dq_check FROM customers')"
+            "INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES(1,'1.0','test','customers','SELECT id,name,1 AS dq_check FROM customers')"
         )
     connection.close()
     root = tkinter_root
@@ -787,7 +787,7 @@ def test_permanent_delete_only_in_details_and_confirmation(
         INSERT INTO users(username,password_hash,role) VALUES('admin','test','superuser');
         INSERT INTO customers(name) VALUES('Ada');
         INSERT INTO dq_rules(id,version,rule_type,target_table,sql_query) VALUES
-        (1,'1.0','test','customers','SELECT id,name,0 AS dq_check FROM customers');
+        (1,'1.0','test','customers','SELECT id,name,1 AS dq_check FROM customers');
     """)
     connection.close()
     run_checks("customers", "admin")

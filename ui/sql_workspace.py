@@ -39,6 +39,7 @@ class SqlWorkspace:
         panes.add(work, weight=4)
         tk.Label(sidebar, text=tr("Dataset tables"), font=("Segoe UI", 11, "bold")).pack(anchor="w")
         tk.Button(sidebar, text=tr("Refresh"), command=self.refresh).pack(anchor="w", pady=6)
+        tk.Button(sidebar,text=tr('Import tables'),command=self.open_import).pack(anchor='w',pady=3)
         tree_box = tk.Frame(sidebar)
         tree_box.pack(fill="both", expand=True)
         self.schema = ttk.Treeview(tree_box, show="tree", selectmode="browse", height=8)
@@ -51,6 +52,7 @@ class SqlWorkspace:
                  wraplength=210, justify="left", foreground=MUTED).pack(anchor="w", pady=8)
         tk.Button(sidebar, text=tr("Preview table"), command=self.table_query).pack(fill="x", pady=3)
         tk.Button(sidebar, text=tr("Rule template"), command=lambda: self.table_query(rule=True)).pack(fill="x", pady=3)
+        tk.Button(sidebar,text=tr('Send table to Databricks'),command=self.open_cloud).pack(fill='x',pady=3)
         tk.Label(work, text=tr("SQL query") + "  ·  dq_check: 0 = PASS, 1 = FAIL",
                  font=("Segoe UI", 11, "bold")).pack(anchor="w")
         vertical = ttk.Panedwindow(work, orient="vertical")
@@ -89,6 +91,14 @@ class SqlWorkspace:
         self.result_frame.pack(fill="both", expand=True)
         self.refresh()
         self.poll_id = root.after(100, self.poll)
+
+    def open_cloud(self):
+        from ui.cloud_window import CloudWindow
+        CloudWindow(tk.Toplevel(self.root),self.username,self.role,self.root,self.time_var,initial_table=self.selected_table())
+
+    def open_import(self):
+        from ui.import_window import ImportWindow
+        ImportWindow(tk.Toplevel(self.root),self.username,self.role,self.root,self.time_var)
 
     def refresh(self):
         try:

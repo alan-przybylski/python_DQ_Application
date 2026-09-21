@@ -135,31 +135,3 @@ def test_manual_cross_execution_saves_both_versions(country_setup):
         assert json.loads(c.execute('SELECT reference_versions FROM dq_remote_receipts').fetchone()[0])=={'countries':4}
         assert any('reference_versions' in sql for sql,_ in remote.updates)
     finally: c.close()
-
-
-@pytest.mark.gui
-@pytest.mark.skipif(os.environ.get('DQ_GUI_TESTS')!='1',reason='Requires desktop')
-def test_builder_creates_rule(country_setup,monkeypatch):
-    import tkinter as tk
-    from ui.cross_table_window import CrossTableWindow
-    from tkinter import messagebox
-    root=tk.Tk()
-    root.withdraw()
-    win=tk.Toplevel(root)
-    monkeypatch.setattr(messagebox,'showinfo',lambda *a,**k:None)
-    monkeypatch.setattr('ui.cross_table_window.error_box',lambda error,*a:pytest.fail(str(error)))
-    try:
-        view=CrossTableWindow(win,'Admin',lambda:None)
-        view.vars['description'].set('Country and currency')
-        view.vars['table'].set('products')
-        view.update_columns()
-        for a,b in country_setup['pairs']:
-            view.source_column.set(a)
-            view.reference_column.set(b)
-            view.add_pair()
-        view.show_sql()
-        root.update()
-        assert 'EXISTS' in view.preview.get('1.0','end')
-        view.create()
-        assert run_details(run_checks('products','Admin'))['failed']==5
-    finally: root.destroy()

@@ -231,7 +231,7 @@ class DatabricksWindow:
         self.target_entry.configure(
             state="readonly" if self.replace.get() else "normal", values=list_tables()
         )
-        self.target.set("")
+        self.target.set(self.fields['table'].get() if not self.replace.get() else '')
 
     def invalidate(self, *args):
         self.snapshot = None
@@ -250,6 +250,8 @@ class DatabricksWindow:
                 **{key: value.get().strip() for key, value in self.fields.items()}
             )
             source.validate()
+            if not self.replace.get():
+                self.target.set(source.table)
             try:
                 limit = int(self.limit.get())
             except ValueError:
@@ -279,7 +281,7 @@ class DatabricksWindow:
 
         def worker():
             try:
-                events.put((True, download(source, limit, cancel)))
+                events.put((True, download(source, limit, cancel,preserve_names=True)))
             except Exception as error:
                 events.put((False, error))
 

@@ -8,6 +8,7 @@ dependencies = [
     "matplotlib>=3.10,<4",
     "pandas==2.3.3",
     "databricks-sql-connector>=4.5,<5",
+    "sqlglot==30.18.0",
 ]
 
 [dependency-groups]

@@ -90,7 +90,7 @@ def error_text(message):
     return message or "DQ check failed"
 
 
-def run_checks(table, username, rule_id=None):
+def run_checks(table, username, rule_id=None, include_remote=False):
     writer, reader = get_connection(), get_connection()
     try:
         writer.execute("BEGIN IMMEDIATE")
@@ -100,7 +100,8 @@ def run_checks(table, username, rule_id=None):
         ).fetchone():
             raise AppError("Account is inactive.")
         rules = writer.execute(
-            "SELECT id,version,description,error_message,sql_query,severity FROM dq_rules WHERE status='ACTIVE' AND execution_mode='local' AND target_table=?"
+            "SELECT id,version,description,error_message,sql_query,severity FROM dq_rules WHERE status='ACTIVE' AND target_table=?"
+            + ("" if include_remote else " AND execution_mode='local'")
             + (" AND id=?" if rule_id is not None else "")
             + " ORDER BY id",
             (table, rule_id) if rule_id is not None else (table,),

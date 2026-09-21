@@ -141,8 +141,8 @@ class CheckDqPanel:
         connection = get_connection()
         try:
             return connection.execute(
-                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND execution_mode=? AND target_table=? ORDER BY id",
-                (execution_mode, table_name),
+                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND target_table=?" + (" AND execution_mode='databricks'" if execution_mode=='databricks' else '') + " ORDER BY id",
+                (table_name,),
             ).fetchall()
         finally:
             connection.close()
@@ -430,7 +430,7 @@ class CheckDqPanel:
 
     def finish_run(self, table, rule_id=None):
         try:
-            run_id = run_checks(table, self.username, rule_id)
+            run_id = run_checks(table, self.username, rule_id,include_remote=True)
             self.report_table.set(table)
             self.refresh_report(run_id)
             details = run_details(run_id)

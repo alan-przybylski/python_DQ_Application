@@ -8,9 +8,17 @@ import pytest
 pytestmark = [pytest.mark.gui, pytest.mark.skipif(os.environ.get('DQ_GUI_TESTS') != '1', reason='Requires desktop')]
 
 
+@pytest.fixture(scope='module')
+def ticket_root():
+    root=tk.Tk()
+    root.withdraw()
+    yield root
+    root.destroy()
+
+
 @pytest.mark.parametrize('language', ['PL', 'EN'])
 @pytest.mark.parametrize('screen_size', [(1920,1080), (1366,768)])
-def test_ticket_windows_and_assignment(sqlite_database, monkeypatch, language, screen_size):
+def test_ticket_windows_and_assignment(sqlite_database, monkeypatch, language, screen_size,ticket_root):
     from config.i18n import set_language, tr
     from database.connection import get_connection
     from logic.rules import save_rule
@@ -29,8 +37,7 @@ def test_ticket_windows_and_assignment(sqlite_database, monkeypatch, language, s
     c.close()
     save_rule('Missing email addresses', 'required', 'customers', 'SELECT id,email,1 AS dq_check FROM customers', 'Email missing', severity='high')
     run_checks('customers', 'Admin')
-    root = tk.Tk()
-    root.withdraw()
+    root = ticket_root
     win = tk.Toplevel(root)
     view = TicketsWindow(win, 'Admin', 'superuser', root, tk.StringVar(root))
     def descendants(parent):
@@ -63,5 +70,6 @@ def test_ticket_windows_and_assignment(sqlite_database, monkeypatch, language, s
         ticket = list_tickets()[0]
         assert ticket['assignee'] == 'Anna' and ticket['status'] == 'in_progress'
     finally:
-        root.destroy()
+        for child in root.winfo_children():
+            child.destroy()
         set_language('EN', persist=False)

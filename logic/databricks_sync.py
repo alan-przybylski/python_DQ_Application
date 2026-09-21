@@ -96,7 +96,15 @@ def definition(link_id):
                    'description':rule['description'] or '', 'rule_type':rule['rule_type'], 'severity':rule['severity'],
                    'error_message':rule['error_message'] or '', 'active':rule['status']=='ACTIVE',
                    'source':[link['source_catalog'],link['source_schema'],link['source_table']], 'sql':link['remote_sql']}
-        if rule['cross_spec']:
+        if link.get('plain_sql'):
+            from integrations.plain_sql import compile_sql
+            from logic.datasets import list_tables
+            sql,dependencies=compile_sql(rule['sql_query'],link['source_catalog'],link['source_schema'],list_tables())
+            if rule['target_table'] not in dependencies:
+                raise ValueError('The rule must read its selected table.')
+            dependencies.pop(rule['target_table'])
+            payload.update(contract=3,sql=sql,references=dependencies)
+        elif rule['cross_spec']:
             from logic.references import remote_references
             spec=json.loads(rule['cross_spec'])
             payload.update(contract=2,cross_spec=spec,references=remote_references(c,spec,link['profile']))

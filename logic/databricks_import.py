@@ -65,10 +65,11 @@ class Snapshot:
     source: Source
     columns: list
     rows: list
+    preserve_names: bool = False
 
 
-def local_columns(description):
-    columns, used = [], {"id"}
+def local_columns(description, preserve_names=False):
+    columns, used = [], set() if preserve_names else {"id"}
     kinds = {
         "tinyint": "INTEGER",
         "smallint": "INTEGER",
@@ -103,6 +104,10 @@ def local_columns(description):
             base = "col_" + base
         if base.casefold() == "id":
             base = "source_id"
+        if preserve_names:
+            if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',original) or original.casefold() in used:
+                raise ValueError('Source column names must be unique simple SQL identifiers; names will not be changed automatically.')
+            base=original
         name, suffix = base, 2
         while name.casefold() in used:
             name, suffix = f"{base}_{suffix}", suffix + 1
@@ -159,7 +164,7 @@ def connect_source(source):
     )
 
 
-def download(source, row_limit=10_000, cancel=None, connect=None):
+def download(source, row_limit=10_000, cancel=None, connect=None, preserve_names=False):
     source.validate()
     if not isinstance(row_limit, int) or not 1 <= row_limit <= MAX_ROWS:
         raise AppError("The row limit must be between 1 and 100000.")
@@ -176,7 +181,7 @@ def download(source, row_limit=10_000, cancel=None, connect=None):
                 # A read-only, single SELECT; identifiers are separately quoted.
                 # Fetch one extra row to detect overflow, never import a silent sample.
                 cursor.execute(f"SELECT * FROM {source.sql_name} LIMIT {row_limit + 1}")
-                columns = local_columns(cursor.description)
+                columns = local_columns(cursor.description,preserve_names)
                 rows, size = [], 0
                 while True:
                     check_cancel()
@@ -207,7 +212,7 @@ def download(source, row_limit=10_000, cancel=None, connect=None):
                                 "Source exceeds the row limit. Increase the limit or use a smaller view; nothing was imported."
                             )
                 check_cancel()
-                return Snapshot(source, columns, rows)
+                return Snapshot(source, columns, rows,preserve_names)
     except AppError:
         raise
     except Exception:
@@ -220,6 +225,8 @@ def download(source, row_limit=10_000, cancel=None, connect=None):
 
 def save_snapshot(snapshot, table, username, replace=False):
     """Refresh only an earlier snapshot of the same source and identical schema."""
+    if snapshot.preserve_names and any(c['name'].lower()=='id' for c in snapshot.columns):
+        return save_named_snapshot(snapshot,table,username,replace)
     connection = get_connection()
     backup = None
     try:
@@ -268,3 +275,34 @@ def save_snapshot(snapshot, table, username, replace=False):
         return len(snapshot.rows), backup
     finally:
         connection.close()
+
+
+def save_named_snapshot(snapshot,table,username,replace=False):
+    """Keep an existing integer source id instead of renaming it to source_id."""
+    from logic.datasets import identifier
+    identifier(table)
+    names=[c['name'] for c in snapshot.columns]
+    key=next(i for i,n in enumerate(names) if n.lower()=='id')
+    ids=[r[key] for r in snapshot.rows]
+    if snapshot.columns[key]['type']!='INTEGER' or any(type(v) is not int for v in ids) or len(set(ids))!=len(ids):
+        raise ValueError('The source id must contain unique integers for this local table. Its name and values were not changed.')
+    c=get_connection()
+    backup=None
+    try:
+        with c:
+            c.execute('BEGIN IMMEDIATE')
+            if replace:
+                checked_table(c,table)
+                if [(v['name'],v['type']) for v in table_columns(table,c)]!=[(v['name'],v['type']) for v in snapshot.columns]:
+                    raise ValueError('Column names or types differ; the local table was not replaced.')
+                from logic.table_editor import simple_definitions
+                simple_definitions(c,table)
+                backup=backup_locked_database(c,'before_databricks_refresh')
+                c.execute('DELETE FROM '+quote(table))
+            else:
+                fields=[quote(col['name'])+' '+col['type']+(' PRIMARY KEY' if i==key else '') for i,col in enumerate(snapshot.columns)]
+                c.execute('CREATE TABLE '+quote(table)+' ('+','.join(fields)+')')
+            c.executemany('INSERT INTO '+quote(table)+' ('+','.join(map(quote,names))+') VALUES ('+','.join('?' for _ in names)+')',snapshot.rows)
+            c.execute('INSERT INTO data_load_log(table_name,file_name,row_count,loaded_by) VALUES(?,?,?,?)',(table,snapshot.source.reference,len(snapshot.rows),username))
+        return len(snapshot.rows),backup
+    finally:c.close()

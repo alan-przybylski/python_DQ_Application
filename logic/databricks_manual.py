@@ -83,7 +83,7 @@ def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, 
                         run.update(status='failed',execution_error=str(error)[:4000])
                         result, errors = [], []
                     run['completed_at'] = datetime.now(timezone.utc).isoformat()
-                    if payload['contract']==2:
+                    if payload['contract']>=2:
                         cursor.execute(f"UPDATE {name(*prefix,'dq_runs')} SET reference_versions=? WHERE run_id=?",[run.get('reference_versions'),run['run_id']])
                     cursor.execute(f"UPDATE {name(*prefix,'dq_runs')} SET status=?,completed_at=?,source_version=?,execution_error=? WHERE run_id=?",
                                    [run[k] for k in ('status','completed_at','source_version','execution_error','run_id')])

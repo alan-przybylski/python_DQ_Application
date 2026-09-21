@@ -263,9 +263,16 @@ def test_sync_window(linked,gui_root):
     try:
         view=DatabricksSyncWindow(window,'Admin','superuser',root,tk.StringVar(root))
         root.update()
-        assert '{{source}}' in view.sql.get('1.0','end')
+        assert view.table.get()=='customers'
+        assert len(view.rules)==1
         assert len(view.buttons)==6
         assert all(button.winfo_ismapped() for button in view.buttons)
+        assert all(button.winfo_rooty()+button.winfo_height()<=window.winfo_rooty()+window.winfo_height() for button in view.buttons)
+        if os.environ.get('DQ_CAPTURE_UI')=='1':
+            from pathlib import Path
+            from PIL import ImageGrab
+            Path('artifacts').mkdir(exist_ok=True)
+            ImageGrab.grab(window=window.winfo_id()).save('artifacts/simple-databricks.png')
         view.close()
     finally:
         for child in root.winfo_children():

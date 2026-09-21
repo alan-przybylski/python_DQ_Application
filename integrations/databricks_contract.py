@@ -54,7 +54,9 @@ def validate_payload(payload):
     required = {'contract', 'rule_key', 'local_version', 'description', 'rule_type', 'severity', 'error_message', 'active', 'source', 'sql'}
     if payload.get('contract')==2:
         required |= {'cross_spec','references'}
-    if set(payload) != required or payload['contract'] not in (1,2):
+    if payload.get('contract')==3:
+        required |= {'references'}
+    if set(payload) != required or payload['contract'] not in (1,2,3):
         raise ValueError('Unsupported Databricks DQ contract.')
     if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,79}', payload['rule_key']):
         raise ValueError('Invalid rule key.')
@@ -75,11 +77,24 @@ def validate_payload(payload):
             if not isinstance(parts,list) or len(parts)!=3:
                 raise ValueError('Reference must contain catalog, schema and table.')
             name(*parts)
-    template_sql(payload['sql'],payload.get('cross_spec'))
+    if payload['contract']==3:
+        from integrations.plain_sql import validate_sql
+        dependencies={**payload['references'],'__source__':payload['source']}
+        for alias,parts in dependencies.items():
+            if not isinstance(parts,list) or len(parts)!=3:
+                raise ValueError('Invalid dataset dependency.')
+            name(*parts)
+        validate_sql(payload['sql'],dependencies)
+    else:
+        template_sql(payload['sql'],payload.get('cross_spec'))
     return payload
 
 
 def snapshot_sql(payload,source_version,reference_versions):
+    if payload['contract']==3:
+        from integrations.plain_sql import versioned_sql
+        return versioned_sql(payload['sql'],{**payload['references'],'__source__':payload['source']},
+                             {**reference_versions,'__source__':source_version})
     query=template_sql(payload['sql'],payload.get('cross_spec')).replace('{{source}}',name(*payload['source'])+' VERSION AS OF '+str(int(source_version)))
     for alias,parts in payload.get('references',{}).items():
         query=query.replace('{{ref:'+alias+'}}',name(*parts)+' VERSION AS OF '+str(int(reference_versions[alias])))

@@ -73,6 +73,8 @@ def initialize_database(database=None):
         upgrade_databricks_sync(connection)
         from database.references import upgrade_references
         upgrade_references(connection)
+        from database.plain_sql import upgrade_plain_sql
+        upgrade_plain_sql(connection)
     finally:
         connection.close()
 

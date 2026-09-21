@@ -231,10 +231,11 @@ Remote reads are tested with fakes; live-account validation is still pending.
 
 ## Databricks rule and result synchronization
 
-The dashboard's **Databricks sync** screen maps existing rules to Delta tables,
-compares definitions before explicit publication, and downloads completed runs
-into reports and DQ tickets. Optional downloads run after sign-in. A portable
-notebook executes the published rules independently of the desktop application.
+The dashboard's **Databricks sync** screen sends tables and rules using one saved
+connection profile. Tables keep their local names in the profile's catalog and
+schema. Rules use ordinary SQL; the application resolves dependencies and validates
+the translated SQL in Databricks before publication. Results download into reports
+and DQ tickets. A portable notebook executes published rules independently.
 See the [setup and daily scheduling guide](docs/DATABRICKS_SYNC.md).
 Generate the standalone import file with `python -m scripts.build_databricks_notebook`.
 Local tests cover synchronization and UI; execution in a live Databricks workspace
@@ -242,13 +243,12 @@ still needs validation.
 
 ## Cross-table checks
 
-Use **Cross-table checks** in the rule library to register named reference datasets
-and create matching rules with one or more column pairs. The builder supports
-EXISTS/NOT EXISTS, explicit NULL handling, optional text normalization and active
-reference filtering. Rules execute locally or in Databricks; remote results record
-the Delta versions of both source and reference tables. See the
-[country/currency walkthrough](docs/CROSS_TABLE.md). Update the generated notebook
-before scheduling cross-table rules.
+Import tables and write ordinary JOIN, EXISTS or CTE queries in the **SQL editor**.
+Use **Create rule** to save the SQL. No reference registry, aliases or separate
+cross-table builder is needed. Send each required table to Databricks, then send
+the rule from the library. Rules remain runnable locally after publication.
+See the [SQL walkthrough](docs/CROSS_TABLE.md). Update the generated notebook
+before scheduling rules using this SQL format.
 
 ## Local storage
 

@@ -1,4 +1,6 @@
 # Databricks notebook source
+# MAGIC %pip install sqlglot==30.18.0
+# COMMAND ----------
 # Import this repository as a Git folder. Keep the integrations/ package beside this notebook.
 # COMMAND ----------
 dbutils.widgets.text('control_catalog', 'workspace')

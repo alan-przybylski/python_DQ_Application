@@ -459,7 +459,7 @@ def test_databricks_download_save_refresh_and_schema_edit_ui(
     )
     rows = [(8, "Ada"), (8, "Bob")]
 
-    def fake_download(actual, limit, cancel):
+    def fake_download(actual, limit, cancel, preserve_names=False):
         assert actual == source
         return Snapshot(
             source, local_columns([("id", "int"), ("name", "string")]), list(rows)
@@ -551,7 +551,7 @@ def test_closing_databricks_window_during_download_is_safe(
 
     entered, release, finished = threading.Event(), threading.Event(), threading.Event()
 
-    def delayed(source, limit, cancel):
+    def delayed(source, limit, cancel, preserve_names=False):
         entered.set()
         try:
             assert release.wait(3)

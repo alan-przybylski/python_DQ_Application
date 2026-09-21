@@ -30,6 +30,7 @@ class DataQualityWindow:
             side="left", padx=4
         )
         if role in ('admin', 'superuser'):
+            tk.Button(toolbar,text=tr('Cross-table checks'),command=self.open_cross_table).pack(side='left',padx=4)
             tk.Button(toolbar, text=tr('Import rule files'), command=self.import_rule_files).pack(side='left', padx=4)
             tk.Button(toolbar, text=tr('Export rule files'), command=self.export_rule_files).pack(side='left', padx=4)
         tk.Button(toolbar, text=tr("Refresh"), command=self.load_rules).pack(
@@ -101,6 +102,10 @@ class DataQualityWindow:
     def go_back(self):
         self.root.destroy()
         self.dashboard_root.deiconify()
+
+    def open_cross_table(self):
+        from ui.cross_table_window import CrossTableWindow
+        CrossTableWindow(tk.Toplevel(self.root),self.username,self.load_rules)
 
     def import_rule_files(self):
         from logic.rule_files import import_rules

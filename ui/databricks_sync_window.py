@@ -103,6 +103,9 @@ class DatabricksSyncWindow:
             c.close()
             if 'product_id' in columns:
                 query=re.sub(r'^(\s*SELECT\s+)id\s*,',r'\1product_id AS id,',query,flags=re.I)
+            if rule.get('cross_spec'):
+                from integrations.cross_table import compile_check
+                query=compile_check(json.loads(rule['cross_spec']))
             self.sql.insert('1.0',query)
         self.review=None
 

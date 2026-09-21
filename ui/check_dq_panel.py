@@ -1,5 +1,6 @@
 import tkinter as tk
 import queue
+import json
 import threading
 from tkinter import ttk, messagebox
 
@@ -208,6 +209,7 @@ class CheckDqPanel:
             self.status.configure(
                 text=f"#{self.current['id']} · {tr(self.current['status'])} · {self.current['completed_at']} · {self.current['username']}"
                 + (f" · Databricks · Delta v{self.current['remote']['source_version']}" if self.current.get('remote') else '')
+                + (' · '+', '.join(f'{alias}: v{version}' for alias,version in json.loads(self.current['remote'].get('reference_versions') or '{}').items()) if self.current.get('remote') and self.current['remote'].get('reference_versions') not in (None,'{}') else '')
                 + (
                     f" · {tr('Execution errors: {details}', details=len(self.current['execution_errors']))}"
                     if self.current["execution_errors"]

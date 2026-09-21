@@ -49,12 +49,13 @@ def save_mapping(rule_id, actor, profile, control_catalog, control_schema, sourc
     target = endpoint(source, control_catalog, control_schema)
     name(control_catalog, control_schema)
     from integrations.databricks_contract import template_sql
-    template_sql(remote_sql)
     c = get_connection()
     try:
         with c:
             c.execute('BEGIN IMMEDIATE')
             require_superuser(c, actor)
+            spec_row=c.execute('SELECT cross_spec FROM dq_rules WHERE id=?',(rule_id,)).fetchone()
+            template_sql(remote_sql,json.loads(spec_row[0]) if spec_row and spec_row[0] else None)
             old = c.execute('SELECT endpoint,source_catalog,source_schema,source_table,base_revision,remote_sql FROM dq_remote_links WHERE rule_id=?', (rule_id,)).fetchone()
             if old and old[4] and tuple(old[:4]) != (target,source_catalog,source_schema,source_table):
                 raise ValueError('Published mappings cannot change source or workspace. Use a new rule.')
@@ -95,6 +96,10 @@ def definition(link_id):
                    'description':rule['description'] or '', 'rule_type':rule['rule_type'], 'severity':rule['severity'],
                    'error_message':rule['error_message'] or '', 'active':rule['status']=='ACTIVE',
                    'source':[link['source_catalog'],link['source_schema'],link['source_table']], 'sql':link['remote_sql']}
+        if rule['cross_spec']:
+            from logic.references import remote_references
+            spec=json.loads(rule['cross_spec'])
+            payload.update(contract=2,cross_spec=spec,references=remote_references(c,spec,link['profile']))
         return link, validate_payload(payload)
     finally:
         c.close()
@@ -147,6 +152,9 @@ def setup_remote(link_id, actor, connect=connect_source):
         cursor.execute('CREATE SCHEMA IF NOT EXISTS '+name(link['control_catalog'],link['control_schema']))
         for table, fields in TABLES.items():
             cursor.execute(f"CREATE TABLE IF NOT EXISTS {name(link['control_catalog'],link['control_schema'],table)} ({fields}) USING DELTA")
+        columns=rows(cursor,'DESCRIBE TABLE '+name(link['control_catalog'],link['control_schema'],'dq_runs'))
+        if not any(r['col_name']=='reference_versions' for r in columns):
+            cursor.execute('ALTER TABLE '+name(link['control_catalog'],link['control_schema'],'dq_runs')+' ADD COLUMNS (reference_versions STRING)')
 
 
 def accept_remote(link_id, actor, expected_remote, connect=connect_source):
@@ -156,6 +164,8 @@ def accept_remote(link_id, actor, expected_remote, connect=connect_source):
     if not found or found['revision']!=expected_remote:
         raise ValueError('Remote definition changed. Compare again.')
     payload = json.loads(found['payload'])
+    if payload.get('cross_spec')!=local.get('cross_spec') or payload.get('references')!=local.get('references'):
+        raise ValueError('Cross-table dependencies differ. Configure matching references and a new rule before accepting.')
     if payload['source'] != local['source']:
         raise ValueError('Remote source differs from the saved mapping.')
     c = get_connection()
@@ -236,6 +246,9 @@ def import_run(link, run, result, errors, actor):
         raise ValueError('Remote timestamps must include their timezone.')
     stamp = lambda value: value.astimezone().replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
     success = run['status'] == 'completed'
+    ref_versions=json.loads(run.get('reference_versions') or '{}')
+    if success and (set(ref_versions)!=set(payload.get('references',{})) or any(type(v) is not int or v<0 for v in ref_versions.values())):
+        raise ValueError('Reference snapshot versions are missing or invalid.')
     if run['status'] not in ('completed','failed'):
         raise ValueError('Run is not complete.')
     if success:
@@ -276,6 +289,8 @@ def import_run(link, run, result, errors, actor):
                                 link['owner'],result['failed'],result['failed']+result['passed'],started.astimezone().replace(tzinfo=None))
             c.execute('INSERT INTO dq_remote_receipts(endpoint,remote_run_id,local_run_id,source_version,rule_key,revision) VALUES(?,?,?,?,?,?)',
                       (link['endpoint'],run['run_id'],local_id,run['source_version'],payload['rule_key'],run['revision']))
+            c.execute('UPDATE dq_remote_receipts SET reference_versions=? WHERE endpoint=? AND remote_run_id=?',
+                      (canonical(ref_versions),link['endpoint'],run['run_id']))
             return True
     finally:
         c.close()

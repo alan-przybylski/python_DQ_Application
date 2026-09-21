@@ -229,8 +229,6 @@ See the [Databricks setup and safety guide](docs/DATABRICKS.md) for connection
 details, refresh semantics, supported types and a small test table.
 Remote reads are tested with fakes; live-account validation is still pending.
 
-## Storage and limitations
-
 ## Databricks rule and result synchronization
 
 The dashboard's **Databricks sync** screen maps existing rules to Delta tables,
@@ -241,6 +239,16 @@ See the [setup and daily scheduling guide](docs/DATABRICKS_SYNC.md).
 Generate the standalone import file with `python -m scripts.build_databricks_notebook`.
 Local tests cover synchronization and UI; execution in a live Databricks workspace
 still needs validation.
+
+## Cross-table checks
+
+Use **Cross-table checks** in the rule library to register named reference datasets
+and create matching rules with one or more column pairs. The builder supports
+EXISTS/NOT EXISTS, explicit NULL handling, optional text normalization and active
+reference filtering. Rules execute locally or in Databricks; remote results record
+the Delta versions of both source and reference tables. See the
+[country/currency walkthrough](docs/CROSS_TABLE.md). Update the generated notebook
+before scheduling cross-table rules.
 
 ## Local storage
 

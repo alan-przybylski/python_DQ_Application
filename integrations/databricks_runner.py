@@ -4,13 +4,15 @@ from datetime import datetime, timezone
 import json
 import uuid
 
-from integrations.databricks_contract import TABLES, name, canonical, revision, validate_payload, template_sql
+from integrations.databricks_contract import TABLES, name, canonical, revision, validate_payload, template_sql, snapshot_sql
 
 
 def setup(spark, catalog, schema):
     spark.sql('CREATE SCHEMA IF NOT EXISTS ' + name(catalog,schema))
     for table, fields in TABLES.items():
         spark.sql(f'CREATE TABLE IF NOT EXISTS {name(catalog,schema,table)} ({fields}) USING DELTA')
+    if 'reference_versions' not in spark.table(name(catalog,schema,'dq_runs')).columns:
+        spark.sql('ALTER TABLE '+name(catalog,schema,'dq_runs')+' ADD COLUMNS (reference_versions STRING)')
 
 
 def run_job(spark, catalog, schema):
@@ -32,13 +34,14 @@ def run_job(spark, catalog, schema):
         run_id = uuid.uuid4().hex
         started = datetime.now(timezone.utc).isoformat()
         run = {'run_id':run_id,'rule_key':row['rule_key'],'revision':row['revision'],'payload':canonical(payload),
-               'started_at':started,'completed_at':None,'status':'running','source_version':None,'execution_error':None}
+               'started_at':started,'completed_at':None,'status':'running','source_version':None,'execution_error':None,'reference_versions':None}
         spark.createDataFrame([run], TABLES['dq_runs']).write.mode('append').saveAsTable(name(*prefix,'dq_runs'))
         stage = name(*prefix,'dq_stage_'+run_id)
         try:
             source = name(*payload['source'])
             version = int(spark.sql(f'DESCRIBE HISTORY {source} LIMIT 1').first()['version'])
-            query = template_sql(payload['sql']).replace('{{source}}', f'{source} VERSION AS OF {version}')
+            versions={alias:int(spark.sql('DESCRIBE HISTORY '+name(*parts)+' LIMIT 1').first()['version']) for alias,parts in payload.get('references',{}).items()}
+            query = snapshot_sql(payload,version,versions)
             # Subquery position disallows DML/DDL even if a definition was edited externally.
             checked = spark.sql('SELECT * FROM (\n'+query+'\n) dq_checked')
             columns = checked.columns
@@ -67,8 +70,8 @@ def run_job(spark, catalog, schema):
             if saved_count != failed:
                 raise ValueError('Non-repeatable query output: saved errors do not match the count.')
             spark.createDataFrame([(run_id,int(totals['checked'])-failed,failed,field)], TABLES['dq_results']).write.mode('append').saveAsTable(name(*prefix,'dq_results'))
-            spark.sql(f"UPDATE {name(*prefix,'dq_runs')} SET status='completed',completed_at=:ended,source_version=:version WHERE run_id=:rid",
-                      args={'ended':datetime.now(timezone.utc).isoformat(),'version':version,'rid':run_id})
+            spark.sql(f"UPDATE {name(*prefix,'dq_runs')} SET status='completed',completed_at=:ended,source_version=:version,reference_versions=:refs WHERE run_id=:rid",
+                      args={'ended':datetime.now(timezone.utc).isoformat(),'version':version,'refs':canonical(versions),'rid':run_id})
         except Exception as error:
             message = str(error)[:4000]
             spark.sql(f"UPDATE {name(*prefix,'dq_runs')} SET status='failed',completed_at=:ended,execution_error=:error WHERE run_id=:rid",

@@ -25,7 +25,8 @@ def read_definitions(directory):
         if not path.resolve().is_relative_to(directory):
             raise AppError('Rule files must stay inside the selected directory.')
         data = tomllib.loads(path.read_text(encoding='utf-8'))
-        if set(data) != FIELDS or type(data['schema_version']) is not int or data['schema_version'] != 1:
+        cross_fields={'cross_spec'} if data.get('schema_version')==2 else set()
+        if set(data) != FIELDS | cross_fields or type(data['schema_version']) is not int or data['schema_version'] not in (1,2):
             raise AppError('Unsupported rule file format: {path}', path=str(path))
         for field in FIELDS - {'schema_version', 'active'}:
             if not isinstance(data[field], str):
@@ -41,6 +42,12 @@ def read_definitions(directory):
                 or not sql_path.is_relative_to(path.parent.resolve())):
             raise AppError('SQL must be a .sql file beside its rule metadata.')
         data['sql_query'] = sql_path.read_text(encoding='utf-8').strip()
+        if cross_fields:
+            from integrations.cross_table import compile_check, validate_spec
+            from logic.datasets import quote
+            data['cross_spec']=validate_spec(json.loads(data['cross_spec']))
+            if data['sql_query']!=compile_check(data['cross_spec'],quote(data['table'])):
+                raise ValueError('Cross-table SQL differs from its column-pair configuration.')
         if not data['sql_query']:
             raise AppError('Write a query first.')
         keys.add(data['key'])
@@ -84,14 +91,15 @@ def import_rules(directory, actor):
                 old = c.execute('SELECT * FROM dq_rules WHERE rule_key=?', (data['key'],)).fetchone()
                 values = (data['description'], data['rule_type'], data['table'], data['error_message'],
                           data['sql_query'], data['severity'], 'ACTIVE' if data['active'] else 'INACTIVE')
+                spec=json.dumps(data['cross_spec']) if data.get('cross_spec') else None
                 if old is None:
-                    c.execute("""INSERT INTO dq_rules(description,rule_type,target_table,error_message,sql_query,severity,status,rule_key,version)
-                        VALUES(?,?,?,?,?,?,?,?,'1.0')""", (*values, data['key']))
+                    c.execute("""INSERT INTO dq_rules(description,rule_type,target_table,error_message,sql_query,severity,status,rule_key,version,cross_spec)
+                        VALUES(?,?,?,?,?,?,?,?,'1.0',?)""", (*values, data['key'],spec))
                     counts['created'] += 1
                     continue
                 previous = (old['description'], old['rule_type'], old['target_table'], error_text(old['error_message']),
                             (old['sql_query'] or '').strip(), old['severity'], old['status'])
-                if previous == values:
+                if previous == values and old['cross_spec']==spec:
                     counts['unchanged'] += 1
                     continue
                 if old['target_table'] != data['table']:
@@ -106,6 +114,7 @@ def import_rules(directory, actor):
                 c.execute("""UPDATE dq_rules SET description=?,rule_type=?,target_table=?,error_message=?,sql_query=?,severity=?,status=?,version=?,
                     activated_at=CASE WHEN ?='ACTIVE' THEN datetime('now','localtime') ELSE activated_at END WHERE id=?""",
                     (*values, version, values[-1], old['id']))
+                c.execute('UPDATE dq_rules SET cross_spec=? WHERE id=?',(spec,old['id']))
                 counts['updated'] += 1
         return counts
     finally:
@@ -136,6 +145,8 @@ def export_rules(directory, actor):
             data = {'schema_version': 1, 'key': key, 'description': row['description'] or '',
                     'rule_type': row['rule_type'], 'table': row['target_table'], 'severity': row['severity'],
                     'error_message': error_text(row['error_message']), 'active': row['status'] == 'ACTIVE', 'sql_file': sql_name}
+            if row['cross_spec']:
+                data.update(schema_version=2,cross_spec=row['cross_spec'])
             text = '\n'.join(f'{k} = {json.dumps(v, ensure_ascii=False)}' for k, v in data.items()) + '\n'
             # Exclusive creation protects edited definitions from accidental overwrite.
             for path, content in ((directory / sql_name, (row['sql_query'] or '').strip() + '\n'),

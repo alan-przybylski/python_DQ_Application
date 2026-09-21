@@ -27,6 +27,7 @@ INTERNAL_TABLES = frozenset(
         "dq_remote_links",
         "dq_remote_versions",
         "dq_remote_receipts",
+        "dq_references",
     }
 )
 TYPES = ("TEXT", "INTEGER", "REAL")

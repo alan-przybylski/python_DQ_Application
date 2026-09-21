@@ -71,6 +71,8 @@ def initialize_database(database=None):
         from database.databricks_sync import upgrade_databricks_sync
 
         upgrade_databricks_sync(connection)
+        from database.references import upgrade_references
+        upgrade_references(connection)
     finally:
         connection.close()
 

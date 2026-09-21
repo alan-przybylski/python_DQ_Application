@@ -5,7 +5,7 @@ from database.connection import get_connection
 from logic.dq_engine import validate_rule, error_text
 
 
-def save_rule(description, rule_type, table, sql, message, rule_id=None, severity='medium'):
+def save_rule(description, rule_type, table, sql, message, rule_id=None, severity='medium', cross_spec=None):
     if severity not in ('low', 'medium', 'high'):
         raise AppError('Select Low, Medium or High severity.')
     if not description.strip() or not rule_type.strip():
@@ -17,15 +17,17 @@ def save_rule(description, rule_type, table, sql, message, rule_id=None, severit
             connection.execute("BEGIN IMMEDIATE")
             if rule_id is None:
                 return connection.execute(
-                    """INSERT INTO dq_rules(description,rule_type,target_table,error_message,sql_query,version,severity)
-                    VALUES(?,?,?,?,?,'1.0',?)""",
-                    (description, rule_type, table, message, sql, severity),
+                    """INSERT INTO dq_rules(description,rule_type,target_table,error_message,sql_query,version,severity,cross_spec)
+                    VALUES(?,?,?,?,?,'1.0',?,?)""",
+                    (description, rule_type, table, message, sql, severity,json.dumps(cross_spec) if cross_spec else None),
                 ).lastrowid
             row = connection.execute(
-                "SELECT status,version FROM dq_rules WHERE id=?", (rule_id,)
+                "SELECT status,version,cross_spec,sql_query FROM dq_rules WHERE id=?", (rule_id,)
             ).fetchone()
             if not row:
                 raise AppError("Rule not found.")
+            if row[2] and sql.strip()!=row[3].strip():
+                raise ValueError('Create a new cross-table rule in the builder to change its column pairs. Metadata can be edited here.')
             if row[0].upper() == "ACTIVE":
                 raise AppError("Deactivate the rule before modifying it.")
             parts = str(row[1] or "1.0").split(".")

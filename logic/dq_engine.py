@@ -10,6 +10,11 @@ from logic.datasets import checked_table, list_tables, write_csv
 
 
 def evaluate(connection, sql, tables):
+    from logic.references import resolve_local
+    try:
+        sql = resolve_local(connection,sql)
+    except ValueError as error:
+        raise AppError('Reference lookup failed: {detail}',detail=str(error)) from error
     allowed = {
         sqlite3.SQLITE_SELECT,
         sqlite3.SQLITE_READ,
@@ -221,7 +226,7 @@ def run_details(run_id):
             FROM dq_field_results f WHERE f.run_id=? AND f.test_result=1 ORDER BY f.id""",
             (run_id,),
         ).fetchall()
-        remote = connection.execute('SELECT remote_run_id,source_version,revision FROM dq_remote_receipts WHERE local_run_id=?',(run_id,)).fetchone()
+        remote = connection.execute('SELECT remote_run_id,source_version,revision,reference_versions FROM dq_remote_receipts WHERE local_run_id=?',(run_id,)).fetchone()
         return {
             **run,
             **totals,

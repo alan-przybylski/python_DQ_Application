@@ -6,7 +6,7 @@ import json
 import uuid
 
 from database.connection import get_connection
-from integrations.databricks_contract import name, template_sql, canonical
+from integrations.databricks_contract import name, template_sql, canonical, snapshot_sql
 from logic.databricks_import import connect_source
 from logic.databricks_sync import mappings, source_for, remote_definition, rows, import_run
 
@@ -57,7 +57,9 @@ def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, 
                     try:
                         version = rows(cursor, 'DESCRIBE HISTORY '+name(*payload['source'])+' LIMIT 1',limit=1)[0]['version']
                         run['source_version'] = int(version)
-                        sql = template_sql(payload['sql']).replace('{{source}}',name(*payload['source'])+' VERSION AS OF '+str(int(version)))
+                        versions={alias:int(rows(cursor,'DESCRIBE HISTORY '+name(*parts)+' LIMIT 1',limit=1)[0]['version']) for alias,parts in payload.get('references',{}).items()}
+                        run['reference_versions']=canonical(versions)
+                        sql = snapshot_sql(payload,version,versions)
                         records = rows(cursor, 'SELECT * FROM (\n'+sql+'\n) dq_checked',limit=100000)
                         columns = [col[0] for col in cursor.description]
                         if len(columns)<3 or columns[0]!='id' or columns[1] in ('id','dq_check') or 'dq_check' not in columns or len(set(columns))!=len(columns):
@@ -81,6 +83,8 @@ def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, 
                         run.update(status='failed',execution_error=str(error)[:4000])
                         result, errors = [], []
                     run['completed_at'] = datetime.now(timezone.utc).isoformat()
+                    if payload['contract']==2:
+                        cursor.execute(f"UPDATE {name(*prefix,'dq_runs')} SET reference_versions=? WHERE run_id=?",[run.get('reference_versions'),run['run_id']])
                     cursor.execute(f"UPDATE {name(*prefix,'dq_runs')} SET status=?,completed_at=?,source_version=?,execution_error=? WHERE run_id=?",
                                    [run[k] for k in ('status','completed_at','source_version','execution_error','run_id')])
                     import_run(link,run,result,errors,actor)

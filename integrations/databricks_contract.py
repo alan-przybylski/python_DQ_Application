@@ -6,7 +6,7 @@ import re
 
 TABLES = {
     'dq_rules': 'rule_key STRING, revision STRING, payload STRING, updated_at TIMESTAMP',
-    'dq_runs': 'run_id STRING, rule_key STRING, revision STRING, payload STRING, started_at STRING, completed_at STRING, status STRING, source_version BIGINT, execution_error STRING',
+    'dq_runs': 'run_id STRING, rule_key STRING, revision STRING, payload STRING, started_at STRING, completed_at STRING, status STRING, source_version BIGINT, execution_error STRING, reference_versions STRING',
     'dq_results': 'run_id STRING, passed BIGINT, failed BIGINT, field_name STRING',
     'dq_errors': 'run_id STRING, record_id STRING, field_name STRING, field_value STRING, error_message STRING',
 }
@@ -26,7 +26,13 @@ def revision(payload):
     return hashlib.sha256(canonical(payload).encode('utf-8')).hexdigest()
 
 
-def template_sql(sql):
+def template_sql(sql, spec=None):
+    if spec is not None:
+        from integrations.cross_table import compile_check
+        expected=compile_check(spec)
+        if sql.strip().removesuffix(';').strip()!=expected:
+            raise ValueError('Cross-table SQL must match its configured column pairs. Recreate the rule to change its logic.')
+        return expected
     # Strings and quoted identifiers are preserved when stripping comments.
     pattern = r"'(''|[^'])*'|\"(\"\"|[^\"])*\"|`(``|[^`])*`|--[^\n]*|/\*[\s\S]*?\*/"
     cleaned = re.sub(pattern, lambda m: ' ' if m[0].startswith(('--','/*')) else m[0], sql).strip().removesuffix(';').strip()
@@ -46,7 +52,9 @@ def template_sql(sql):
 
 def validate_payload(payload):
     required = {'contract', 'rule_key', 'local_version', 'description', 'rule_type', 'severity', 'error_message', 'active', 'source', 'sql'}
-    if set(payload) != required or payload['contract'] != 1:
+    if payload.get('contract')==2:
+        required |= {'cross_spec','references'}
+    if set(payload) != required or payload['contract'] not in (1,2):
         raise ValueError('Unsupported Databricks DQ contract.')
     if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,79}', payload['rule_key']):
         raise ValueError('Invalid rule key.')
@@ -58,5 +66,21 @@ def validate_payload(payload):
     if not isinstance(payload['source'], list) or len(payload['source']) != 3:
         raise ValueError('Source must contain catalog, schema and table.')
     name(*payload['source'])
-    template_sql(payload['sql'])
+    if payload['contract']==2:
+        from integrations.cross_table import validate_spec
+        spec=validate_spec(payload['cross_spec'])
+        if set(payload['references'])!={spec['reference']}:
+            raise ValueError('Reference mappings do not match the rule.')
+        for parts in payload['references'].values():
+            if not isinstance(parts,list) or len(parts)!=3:
+                raise ValueError('Reference must contain catalog, schema and table.')
+            name(*parts)
+    template_sql(payload['sql'],payload.get('cross_spec'))
     return payload
+
+
+def snapshot_sql(payload,source_version,reference_versions):
+    query=template_sql(payload['sql'],payload.get('cross_spec')).replace('{{source}}',name(*payload['source'])+' VERSION AS OF '+str(int(source_version)))
+    for alias,parts in payload.get('references',{}).items():
+        query=query.replace('{{ref:'+alias+'}}',name(*parts)+' VERSION AS OF '+str(int(reference_versions[alias])))
+    return query

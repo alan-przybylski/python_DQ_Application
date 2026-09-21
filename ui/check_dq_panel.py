@@ -1,4 +1,6 @@
 import tkinter as tk
+import queue
+import threading
 from tkinter import ttk, messagebox
 
 from config.i18n import tr, AppError
@@ -134,15 +136,30 @@ class CheckDqPanel:
     def get_tables_to_dq_check(self):
         return list_tables()
 
-    def get_active_rules_for_table(self, table_name):
+    def get_active_rules_for_table(self, table_name, execution_mode='local'):
         connection = get_connection()
         try:
             return connection.execute(
-                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND target_table=? ORDER BY id",
-                (table_name,),
+                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND execution_mode=? AND target_table=? ORDER BY id",
+                (execution_mode, table_name),
             ).fetchall()
         finally:
             connection.close()
+
+    def get_remote_rule_count(self, table_name):
+        connection = get_connection()
+        try:
+            return connection.execute(
+                "SELECT COUNT(*) FROM dq_rules WHERE status='ACTIVE' AND execution_mode='databricks' AND target_table=?",
+                (table_name,),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+
+    def open_remote_sync(self):
+        from ui.databricks_sync_window import DatabricksSyncWindow
+        window = tk.Toplevel(self.root)
+        DatabricksSyncWindow(window, self.username, self.role, self.root, self.time_var)
 
     def refresh_report(self, selected_run=None):
         try:
@@ -190,6 +207,7 @@ class CheckDqPanel:
             )
             self.status.configure(
                 text=f"#{self.current['id']} · {tr(self.current['status'])} · {self.current['completed_at']} · {self.current['username']}"
+                + (f" · Databricks · Delta v{self.current['remote']['source_version']}" if self.current.get('remote') else '')
                 + (
                     f" · {tr('Execution errors: {details}', details=len(self.current['execution_errors']))}"
                     if self.current["execution_errors"]
@@ -288,6 +306,11 @@ class CheckDqPanel:
             width=38,
         )
         dropdown.pack(fill="x")
+        tk.Label(form, text=tr('Execution location')).pack(anchor='w',pady=6)
+        self.execution_location = tk.StringVar(value='Databricks' if self.get_remote_rule_count(self.selected_table.get()) else tr('Local'))
+        location = ttk.Combobox(form,textvariable=self.execution_location,
+                                values=[tr('Local'),'Databricks'],state='readonly',width=38)
+        location.pack(fill='x')
         self.run_type = tk.StringVar(value="all")
         for value, label in (("all", "All rules"), ("single", "Single rule")):
             tk.Radiobutton(
@@ -302,20 +325,38 @@ class CheckDqPanel:
             form, textvariable=self.rule_var, state="disabled", width=38
         )
         self.rule_dropdown.pack(fill="x", pady=8)
+        execution_hint = tk.Label(form, wraplength=500, justify="left")
+        execution_hint.pack(fill="x", pady=6)
+        run_button = tk.Button(
+            form, text=tr("Run checks"), command=lambda: self.run_dq_from_dialog(dialog)
+        )
+        run_button.pack(fill="x", pady=12)
+        sync_button = tk.Button(form, text=tr("Databricks sync"), command=self.open_remote_sync)
 
         def update_rules(event=None):
-            rules = self.get_active_rules_for_table(self.selected_table.get())
+            engine = 'databricks' if self.execution_location.get()=='Databricks' else 'local'
+            rules = self.get_active_rules_for_table(self.selected_table.get(),engine)
             self.rules_dict = {
                 f"#{rule_id} / {description}": rule_id for rule_id, description in rules
             }
             self.rule_dropdown.configure(values=list(self.rules_dict))
             self.rule_var.set(next(iter(self.rules_dict), tr("No active rules")))
+            remote_count = self.get_remote_rule_count(self.selected_table.get())
+            execution_hint.configure(text=tr(
+                "Run checks executes rules at the selected location. Databricks results are downloaded automatically.",
+            ))
+            run_button.configure(state="normal" if rules else "disabled")
+            if remote_count:
+                sync_button.pack(fill="x", pady=4)
+            else:
+                sync_button.pack_forget()
 
-        dropdown.bind("<<ComboboxSelected>>", update_rules)
+        def change_table(event=None):
+            self.execution_location.set('Databricks' if self.get_remote_rule_count(self.selected_table.get()) else tr('Local'))
+            update_rules()
+        dropdown.bind("<<ComboboxSelected>>", change_table)
+        location.bind("<<ComboboxSelected>>",update_rules)
         update_rules()
-        tk.Button(
-            form, text=tr("Run checks"), command=lambda: self.run_dq_from_dialog(dialog)
-        ).pack(fill="x", pady=12)
 
     def on_run_type_change(self):
         self.rule_dropdown.configure(
@@ -332,11 +373,58 @@ class CheckDqPanel:
             error_box(AppError("No rule selected."), dialog)
             return
         mode = self.run_type.get()
+        if self.execution_location.get()=='Databricks':
+            self.run_cloud_from_dialog(dialog,table,rule_id if mode=='single' else None)
+            return
         dialog.destroy()
         if mode == "all":
             self.run_all_dq_rules(table)
         else:
             self.run_selected_dq_rule(table, rule_id)
+
+    def run_cloud_from_dialog(self,dialog,table,rule_id=None):
+        from logic.databricks_sync import mappings
+        from logic.databricks_manual import run_remote_checks
+        link_id = None
+        if rule_id is not None:
+            link = next((l for l in mappings() if l['rule_id']==rule_id),None)
+            if link is None:
+                error_box(AppError('Save the mapping first.'),dialog)
+                return
+            link_id = link['id']
+        def disable(widget):
+            for child in widget.winfo_children():
+                if isinstance(child,(tk.Button,ttk.Combobox,tk.Radiobutton)):
+                    child.configure(state='disabled')
+                disable(child)
+        disable(dialog)
+        progress=tk.Label(dialog,text=tr('Connecting to Databricks… Browser sign-in may be required.'))
+        progress.pack(pady=8)
+        events=queue.Queue()
+        cancel=threading.Event()
+        dialog.protocol('WM_DELETE_WINDOW',lambda:(cancel.set(),dialog.destroy()))
+        def worker():
+            try:
+                events.put((True,run_remote_checks(self.username,link_id,cancel=cancel,table=table)))
+            except Exception as error:
+                events.put((False,str(error)))
+        def poll():
+            if not dialog.winfo_exists():
+                return
+            try:
+                ok,value=events.get_nowait()
+            except queue.Empty:
+                dialog.after(150,poll)
+                return
+            dialog.destroy()
+            self.report_table.set(table)
+            self.refresh_report()
+            if ok:
+                messagebox.showinfo(tr('Success'),tr('Executed and imported {count} Databricks checks.',count=value),parent=self.root)
+            else:
+                messagebox.showerror(tr('Error'),value,parent=self.root)
+        threading.Thread(target=worker,daemon=True).start()
+        dialog.after(150,poll)
 
     def finish_run(self, table, rule_id=None):
         try:

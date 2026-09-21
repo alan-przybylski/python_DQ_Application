@@ -86,6 +86,38 @@ Use **Rule template** for a starting check, then **Create rule** to transfer the
 SQL into the existing rule form. Choose the target table and complete the details;
 saving validates the full rule using the existing rule engine.
 
+### DQ tickets and rule severity
+
+Rules have **Low**, **Medium** or **High** severity; existing rules default to
+Medium. A failed check creates one open ticket per rule and dataset, with a
+deadline of **7 / 3 / 1 calendar days**, respectively, from ticket creation.
+The ticket snapshots severity and deadline; retries and rule edits do not move them.
+
+Open **DQ tickets** to filter open, overdue or assigned tickets. The check runner
+is the reporter and initial assignee. The latest importer and source filename are
+recorded separately when available. The reporter, assignee or a superuser can
+reassign the ticket, add comments and move it through New, In progress and To verify.
+Successful checks with at least one record and no failures close it automatically.
+SQL errors, empty checks and skipped rules never close tickets. Recurring failures
+update the open ticket; failures after closure create a new ticket.
+
+The detail view links to the latest failing run's records (up to 500) and keeps an
+activity log. Existing results are not retroactively turned into tickets; run a
+check to start the workflow. Ticket records and comments stay in the local database.
+Permanently deleting a rule cancels its open tickets with the status **Rule deleted**,
+retaining their activity history; deleted result records are no longer available.
+
+### Rules in Git
+
+The rule library offers **Import rule files** and **Export rule files** for
+superusers. Each rule is stored as readable TOML metadata plus a separate SQL file.
+The [`rules/`](rules/README.md) directory includes two opt-in examples.
+Stable keys prevent duplicate imports; changed definitions create a new version
+and retain the old definition in history. An import is atomic across all files.
+
+Run local checks in the desktop application. Databricks checks can be started
+from the application or scheduled independently using the supplied notebook.
+
 ### Application tour
 
 Real application windows, captured using temporary synthetic data only:
@@ -198,6 +230,19 @@ details, refresh semantics, supported types and a small test table.
 Remote reads are tested with fakes; live-account validation is still pending.
 
 ## Storage and limitations
+
+## Databricks rule and result synchronization
+
+The dashboard's **Databricks sync** screen maps existing rules to Delta tables,
+compares definitions before explicit publication, and downloads completed runs
+into reports and DQ tickets. Optional downloads run after sign-in. A portable
+notebook executes the published rules independently of the desktop application.
+See the [setup and daily scheduling guide](docs/DATABRICKS_SYNC.md).
+Generate the standalone import file with `python -m scripts.build_databricks_notebook`.
+Local tests cover synchronization and UI; execution in a live Databricks workspace
+still needs validation.
+
+## Local storage
 
 Your private data stays in `data/app.db`; close the app before copying the database
 for a backup. The V2 upgrade also creates a pre-migration backup automatically.

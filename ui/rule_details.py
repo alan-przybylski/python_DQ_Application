@@ -53,7 +53,7 @@ class RuleDetailsWindow:
         ).pack(fill="x", padx=24, pady=(10, 4))
         tk.Label(
             root,
-            text=f"{current['target_table']}  ·  {tr('Version')} {current['version']}  ·  {tr('Active rule') if current['status'] == 'ACTIVE' else tr('Inactive rule')}",
+            text=f"{current['target_table']}  ·  {tr('Version')} {current['version']}  ·  {tr('Severity')}: {current['severity'].title()}  ·  {tr('Active rule') if current['status'] == 'ACTIVE' else tr('Inactive rule')}",
             anchor="w",
         ).pack(fill="x", padx=24, pady=(0, 8))
         self.notebook = ttk.Notebook(root)
@@ -71,7 +71,15 @@ class RuleDetailsWindow:
         metadata = f"{tr('Description')}: {current['description'] or '—'}\n{tr('Rule type')}: {current['rule_type']}\n{tr('Error message')}: {current['error_message'] or '—'}"
         readonly_text(page, metadata, height=3, expand=False)
         tk.Label(page, text=tr("SQL query") + "  ·  dq_check: 0 = PASS, 1 = FAIL", anchor="w").pack(fill="x")
-        readonly_text(page, current["sql_query"] or "")
+        sql = current['sql_query'] or ''
+        if current.get('execution_mode') == 'databricks':
+            from logic.databricks_sync import mappings
+            link = next((row for row in mappings() if row['rule_id']==self.rule_id),None)
+            if link:
+                sql = '-- Databricks SQL template\n'+link['remote_sql']
+        readonly_text(page, sql)
+        if current.get('execution_mode') == 'databricks':
+            tk.Label(page,text=tr('Changes to mapped rules take effect in Databricks only after publishing.'),wraplength=950,anchor='w').pack(fill='x')
         actions = tk.Frame(page)
         actions.pack(fill="x", pady=4)
         active = current["status"] == "ACTIVE"
@@ -200,7 +208,7 @@ class RuleDetailsWindow:
         self.version_meta.delete("1.0", "end")
         self.version_meta.insert(
             "1.0",
-            f"{selected['description'] or '—'}\n{tr('Table')}: {selected['target_table']} · {tr('Rule type')}: {selected['rule_type']}\n{tr('Error message')}: {selected.get('error_message') or '—'}",
+            f"{selected['description'] or '—'}\n{tr('Table')}: {selected['target_table']} · {tr('Rule type')}: {selected['rule_type']} · {tr('Severity')}: {selected.get('severity', 'medium').title()}\n{tr('Error message')}: {selected.get('error_message') or '—'}",
         )
         self.version_meta.configure(state="disabled")
         old = selected.get("sql_query")

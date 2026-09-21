@@ -70,6 +70,13 @@ def delete_rule(rule_id, username, expected_version=None):
             connection.execute(
                 "DELETE FROM dq_rules_history WHERE rule_id=?", (rule_id,)
             )
+            from logic.tickets import event
+
+            for (ticket_id,) in connection.execute(
+                "SELECT id FROM dq_tickets WHERE rule_id=? AND status NOT IN ('closed','cancelled')", (rule_id,)
+            ).fetchall():
+                connection.execute("UPDATE dq_tickets SET status='cancelled',closed_at=datetime('now','localtime') WHERE id=?", (ticket_id,))
+                event(connection, ticket_id, username, 'rule_deleted', str(rule_id))
             connection.execute("DELETE FROM dq_rules WHERE id=?", (rule_id,))
             for rid, errors in runs:
                 completed = connection.execute(

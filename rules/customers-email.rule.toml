@@ -1,0 +1,9 @@
+schema_version = 1
+key = "customers-email"
+description = "Customer email must have a basic email format"
+rule_type = "format"
+table = "customers"
+severity = "high"
+error_message = "Email is missing or has an invalid format"
+active = true
+sql_file = "customers-email.sql"

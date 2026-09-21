@@ -62,6 +62,15 @@ def initialize_database(database=None):
         from database.failure_flags import upgrade_failure_flags
 
         upgrade_failure_flags(connection, destination)
+        from database.tickets import upgrade_tickets
+
+        upgrade_tickets(connection)
+        from database.rule_files import upgrade_rule_files
+
+        upgrade_rule_files(connection)
+        from database.databricks_sync import upgrade_databricks_sync
+
+        upgrade_databricks_sync(connection)
     finally:
         connection.close()
 

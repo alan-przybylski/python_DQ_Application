@@ -22,6 +22,11 @@ INTERNAL_TABLES = frozenset(
         "dq_results",
         "dq_field_results",
         "dq_runs",
+        "dq_tickets",
+        "dq_ticket_events",
+        "dq_remote_links",
+        "dq_remote_versions",
+        "dq_remote_receipts",
     }
 )
 TYPES = ("TEXT", "INTEGER", "REAL")

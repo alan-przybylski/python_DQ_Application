@@ -95,7 +95,7 @@ def run_checks(table, username, rule_id=None):
         ).fetchone():
             raise AppError("Account is inactive.")
         rules = writer.execute(
-            "SELECT id,version,description,error_message,sql_query FROM dq_rules WHERE status='ACTIVE' AND target_table=?"
+            "SELECT id,version,description,error_message,sql_query,severity FROM dq_rules WHERE status='ACTIVE' AND execution_mode='local' AND target_table=?"
             + (" AND id=?" if rule_id is not None else "")
             + " ORDER BY id",
             (table, rule_id) if rule_id is not None else (table,),
@@ -109,7 +109,7 @@ def run_checks(table, username, rule_id=None):
         reader.execute("BEGIN")
         tables = list_tables(reader)
         errors, completed = [], 0
-        for rid, version, description, message, sql in rules:
+        for rid, version, description, message, sql, severity in rules:
             try:
                 field, records = evaluate(reader, sql, tables)
             except (sqlite3.Error, AppError) as error:
@@ -149,6 +149,10 @@ def run_checks(table, username, rule_id=None):
                         for record in records
                     ],
                 )
+                from logic.tickets import sync_ticket
+
+                sync_ticket(writer, rid, version, table, description, severity, run_id,
+                            username, len(records) - passed, len(records))
                 writer.execute("RELEASE rule_result")
                 completed += 1
             except sqlite3.Error as error:
@@ -217,11 +221,13 @@ def run_details(run_id):
             FROM dq_field_results f WHERE f.run_id=? AND f.test_result=1 ORDER BY f.id""",
             (run_id,),
         ).fetchall()
+        remote = connection.execute('SELECT remote_run_id,source_version,revision FROM dq_remote_receipts WHERE local_run_id=?',(run_id,)).fetchone()
         return {
             **run,
             **totals,
             "errors": errors,
             "execution_errors": json.loads(run["execution_errors"]),
+            "remote": remote,
         }
     finally:
         connection.close()

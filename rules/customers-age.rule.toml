@@ -1,0 +1,9 @@
+schema_version = 1
+key = "customers-age"
+description = "Customer age must be between 18 and 120"
+rule_type = "range"
+table = "customers"
+severity = "medium"
+error_message = "Age is missing or outside the allowed range"
+active = true
+sql_file = "customers-age.sql"

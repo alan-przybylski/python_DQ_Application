@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from config.i18n import tr, AppError
 from database.connection import get_connection
@@ -29,6 +29,9 @@ class DataQualityWindow:
         tk.Button(toolbar, text=tr("Open rule"), command=self.open_rule).pack(
             side="left", padx=4
         )
+        if role in ('admin', 'superuser'):
+            tk.Button(toolbar, text=tr('Import rule files'), command=self.import_rule_files).pack(side='left', padx=4)
+            tk.Button(toolbar, text=tr('Export rule files'), command=self.export_rule_files).pack(side='left', padx=4)
         tk.Button(toolbar, text=tr("Refresh"), command=self.load_rules).pack(
             side="right", padx=4
         )
@@ -65,10 +68,12 @@ class DataQualityWindow:
             root,
             [
                 ("id", "Rule", 65),
-                ("description", "Description", 365),
-                ("target_table", "Table", 200),
-                ("status", "Status", 160),
-                ("kpi", "Last KPI", 180),
+                ("description", "Description", 300),
+                ("target_table", "Table", 160),
+                ("status", "Status", 140),
+                ("severity", "Severity", 95),
+                ("execution", "Execution", 95),
+                ("kpi", "Last KPI", 120),
             ],
             5,
         )
@@ -96,6 +101,29 @@ class DataQualityWindow:
     def go_back(self):
         self.root.destroy()
         self.dashboard_root.deiconify()
+
+    def import_rule_files(self):
+        from logic.rule_files import import_rules
+        folder = filedialog.askdirectory(parent=self.root, title=tr('Import rule files'))
+        if not folder:
+            return
+        try:
+            counts = import_rules(folder, self.username)
+            self.load_rules()
+            messagebox.showinfo(tr('Success'), tr('Created: {created} · Updated: {updated} · Unchanged: {unchanged}', **counts), parent=self.root)
+        except Exception as error:
+            error_box(error, self.root)
+
+    def export_rule_files(self):
+        from logic.rule_files import export_rules
+        folder = filedialog.askdirectory(parent=self.root, title=tr('Export rule files'))
+        if not folder:
+            return
+        try:
+            counts = export_rules(folder, self.username)
+            messagebox.showinfo(tr('Success'), tr('Exported {exported} rules as TOML + SQL.', **counts), parent=self.root)
+        except Exception as error:
+            error_box(error, self.root)
 
     def load_rules(self):
         self.rules = list_rules()
@@ -146,6 +174,8 @@ class DataQualityWindow:
                     row["description"],
                     row["target_table"],
                     "● " + tr("Active rule") if active else "○ " + tr("Inactive rule"),
+                    row["severity"].title(),
+                    'Databricks' if row['execution_mode']=='databricks' else tr('Local'),
                     kpi,
                 ),
                 tags=("active" if active else "inactive",),
@@ -189,11 +219,12 @@ class DataQualityWindow:
 
     def rule_form(self, rule_id=None, initial_sql="", initial_table=""):
         values = ("", "", initial_table, "", initial_sql)
+        severity = 'medium'
         if rule_id is not None:
             connection = get_connection()
             try:
                 row = connection.execute(
-                    "SELECT description,rule_type,target_table,error_message,sql_query,status FROM dq_rules WHERE id=?",
+                    "SELECT description,rule_type,target_table,error_message,sql_query,status,severity FROM dq_rules WHERE id=?",
                     (rule_id,),
                 ).fetchone()
                 if not row:
@@ -201,6 +232,7 @@ class DataQualityWindow:
                 if row[5].upper() == "ACTIVE":
                     raise AppError("Deactivate the rule before modifying it.")
                 values = row[:5]
+                severity = row[6]
             finally:
                 connection.close()
         win = tk.Toplevel(self.root)
@@ -241,10 +273,17 @@ class DataQualityWindow:
             width=45,
         )
         table_selector.grid(row=3, column=1, sticky="ew", pady=8)
-        tk.Label(form, text=tr("SQL query")).grid(row=4, column=0, sticky="nw", pady=8)
+        tk.Label(form, text=tr("Severity")).grid(row=4, column=0, sticky="w", pady=4)
+        severity_var = tk.StringVar(value=severity.title())
+        severity_row = tk.Frame(form)
+        severity_row.grid(row=4, column=1, sticky="ew")
+        ttk.Combobox(severity_row, textvariable=severity_var, values=['Low', 'Medium', 'High'],
+                     state='readonly', width=12).pack(side='left')
+        tk.Label(severity_row, text=tr('Low: 7 days · Medium: 3 days · High: 1 day')).pack(side='left', padx=12)
+        tk.Label(form, text=tr("SQL query")).grid(row=5, column=0, sticky="nw", pady=8)
         sql_entry = tk.Text(form, height=7, width=70, wrap="word")
-        sql_entry.grid(row=4, column=1, sticky="nsew", pady=8)
-        form.rowconfigure(4, weight=1)
+        sql_entry.grid(row=5, column=1, sticky="nsew", pady=8)
+        form.rowconfigure(5, weight=1)
         generated_sql = ""
 
         def example_sql(event=None):
@@ -273,7 +312,7 @@ class DataQualityWindow:
             wraplength=780,
             justify="left",
             font=("Segoe UI", 9),
-        ).grid(row=5, column=1, sticky="w", pady=4)
+        ).grid(row=6, column=1, sticky="w", pady=4)
 
         def submit():
             try:
@@ -284,6 +323,7 @@ class DataQualityWindow:
                     sql_entry.get("1.0", "end-1c"),
                     message_var.get(),
                     rule_id,
+                    severity=severity_var.get().lower(),
                 )
                 self.load_rules()
                 self.load_archive_rules()
@@ -293,7 +333,7 @@ class DataQualityWindow:
                 error_box(error, win)
 
         tk.Button(form, text=tr("Save changes"), command=submit).grid(
-            row=6, column=1, sticky="e", pady=6
+            row=7, column=1, sticky="e", pady=6
         )
 
     def deactivate_dq_rule(self):

@@ -75,6 +75,7 @@ def rule_details(rule_id):
                     if isinstance(historical_sql, str)
                     else None,
                     "error_message": params.get("error_message"),
+                    "severity": params.get("severity", "medium"),
                 }
             )
         result = connection.execute(

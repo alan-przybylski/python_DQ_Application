@@ -43,6 +43,8 @@ class DashboardWindow:
             ("Rule library", self.open_dq_panel),
             ("SQL editor", self.open_sql_editor),
             ("Quality report", self.open_quality_report),
+            ("DQ tickets", self.open_tickets),
+            ("Databricks sync", self.open_databricks_sync),
             ("Export table", self.open_export),
             ("Import history", self.open_file_history),
         ]
@@ -53,8 +55,8 @@ class DashboardWindow:
                 actions,
                 text=f"{index + 1:02d}   {tr(label)}",
                 command=command,
-                width=42,
-            ).pack(fill="x", pady=3)
+                width=32,
+            ).grid(row=index // 2, column=index % 2, sticky='ew', padx=6, pady=4)
         bottom = tk.Frame(root)
         bottom.pack(side="bottom", fill="x")
         tk.Button(bottom, text=tr("Exit"), command=self.exit_program).pack(
@@ -69,6 +71,11 @@ class DashboardWindow:
         self.clock_id = None
         self.update_time()
         root.protocol("WM_DELETE_WINDOW", self.exit_program)
+        self.sync_status = tk.StringVar(master=root)
+        tk.Label(bottom,textvariable=self.sync_status,wraplength=550).pack(side='left',padx=8)
+        from ui.databricks_sync_window import startup_sync
+
+        self.sync_cancel = startup_sync(root,username,self.sync_status)
 
     def update_time(self):
         self.time_var.set(time.strftime("%H:%M:%S"))
@@ -89,6 +96,7 @@ class DashboardWindow:
         self.open_window(AdminWindow)
 
     def exit_program(self):
+        self.sync_cancel.set()
         if self.clock_id:
             self.root.after_cancel(self.clock_id)
         self.root.destroy()
@@ -123,7 +131,18 @@ class DashboardWindow:
 
         self.open_window(CheckDqPanel)
 
+    def open_tickets(self):
+        from ui.tickets_window import TicketsWindow
+
+        self.open_window(TicketsWindow)
+
+    def open_databricks_sync(self):
+        from ui.databricks_sync_window import DatabricksSyncWindow
+
+        self.open_window(DatabricksSyncWindow)
+
     def logout_user(self):
+        self.sync_cancel.set()
         if self.clock_id:
             self.root.after_cancel(self.clock_id)
         for widget in self.root.winfo_children():

@@ -8,14 +8,24 @@ pytestmark = [pytest.mark.gui, pytest.mark.skipif(
     os.environ.get("DQ_GUI_TESTS") != "1", reason="Requires interactive desktop")]
 
 
+@pytest.fixture(scope='module')
+def workspace_root():
+    root=tk.Tk()
+    root.withdraw()
+    yield root
+    root.destroy()
+
+
 @pytest.mark.parametrize("language", ["PL", "EN"])
-def test_preview_and_rule_handoff(sqlite_database, monkeypatch, language):
+@pytest.mark.parametrize('screen_size',[(1920,1080),(1280,720)])
+def test_preview_and_rule_handoff(sqlite_database, monkeypatch, language,screen_size,workspace_root):
     from config.i18n import set_language
     from ui.sql_workspace import SqlWorkspace
     from ui.data_quality import DataQualityWindow
     set_language(language, persist=False)
-    root = tk.Tk()
-    root.withdraw()
+    monkeypatch.setattr(tk.Misc,'winfo_screenwidth',lambda self:screen_size[0])
+    monkeypatch.setattr(tk.Misc,'winfo_screenheight',lambda self:screen_size[1])
+    root = workspace_root
     window = tk.Toplevel(root)
     workspace = SqlWorkspace(window, "Admin", "superuser", root, tk.StringVar(root))
     try:
@@ -57,5 +67,5 @@ def test_preview_and_rule_handoff(sqlite_database, monkeypatch, language):
             ImageGrab.grab(window=window.winfo_id()).save(path / f"sql-{language}.png")
     finally:
         workspace.go_back()
-        root.destroy()
+        root.withdraw()
         set_language("EN", persist=False)

@@ -1,5 +1,6 @@
 import tkinter as tk
 import time
+from tkinter import ttk
 
 from config.i18n import tr
 from logic.accounts import normalize_role
@@ -36,17 +37,22 @@ class DashboardWindow:
             background=NAVY,
             foreground="#B2C4D5",
         ).pack(anchor="w", padx=36, pady=(12, 24))
+        workspace = tk.Frame(root)
+        workspace.pack(fill='x', padx=30, pady=8)
+        tk.Label(workspace, text=tr('Execution location')).pack(side='left', padx=6)
+        self.environment = tk.StringVar(value='Local / SQLite')
+        ttk.Combobox(workspace, textvariable=self.environment, values=['Local / SQLite', 'Databricks'], state='readonly', width=28).pack(side='left')
         actions = tk.Frame(root)
         actions.pack(expand=True, padx=24, pady=16)
         choices = [
-            ("Import CSV", self.load_csv_and_log),
+            ("Local · Import CSV", self.load_csv_and_log),
             ("Rule library", self.open_dq_panel),
             ("SQL editor", self.open_sql_editor),
             ("Quality report", self.open_quality_report),
             ("DQ tickets", self.open_tickets),
-            ("Databricks sync", self.open_databricks_sync),
-            ("Export table", self.open_export),
-            ("Import history", self.open_file_history),
+            ("Data transfers / synchronization", self.open_databricks_sync),
+            ("Local · Export table", self.open_export),
+            ("Local · Import history", self.open_file_history),
         ]
         if self.role == "superuser":
             choices.append(("Manage users", self.open_admin_panel))
@@ -81,10 +87,10 @@ class DashboardWindow:
         self.time_var.set(time.strftime("%H:%M:%S"))
         self.clock_id = self.root.after(1000, self.update_time)
 
-    def open_window(self, window_class):
+    def open_window(self, window_class, **kwargs):
         window = tk.Toplevel(self.root)
         try:
-            window_class(window, self.username, self.role, self.root, self.time_var)
+            window_class(window, self.username, self.role, self.root, self.time_var, **kwargs)
             self.root.withdraw()
         except Exception as error:
             window.destroy()
@@ -112,11 +118,16 @@ class DashboardWindow:
         self.open_window(ExportWindow)
 
     def open_dq_panel(self):
+        if self.environment.get() == 'Databricks':
+            return self.open_sql_editor()
         from ui.data_quality import DataQualityWindow
 
         self.open_window(DataQualityWindow)
 
     def open_sql_editor(self):
+        if self.environment.get() == 'Databricks':
+            from ui.databricks_workspace import DatabricksWorkspace
+            return self.open_window(DatabricksWorkspace)
         from ui.sql_workspace import SqlWorkspace
 
         self.open_window(SqlWorkspace)
@@ -129,12 +140,12 @@ class DashboardWindow:
     def open_quality_report(self):
         from ui.check_dq_panel import CheckDqPanel
 
-        self.open_window(CheckDqPanel)
+        self.open_window(CheckDqPanel, environment='databricks' if self.environment.get() == 'Databricks' else 'local')
 
     def open_tickets(self):
         from ui.tickets_window import TicketsWindow
 
-        self.open_window(TicketsWindow)
+        self.open_window(TicketsWindow, environment='databricks' if self.environment.get() == 'Databricks' else 'local')
 
     def open_databricks_sync(self):
         from ui.databricks_sync_window import DatabricksSyncWindow

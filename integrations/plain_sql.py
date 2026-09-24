@@ -57,6 +57,21 @@ def validate_sql(sql,dependencies):
     return tree,tables
 
 
+def native_sql(sql):
+    """Validate Databricks SQL without rewriting it through SQLite."""
+    tree, tables = parsed(sql, 'databricks')
+    dependencies = {}
+    for table in tables:
+        if not table.catalog or not table.db:
+            raise ValueError('Use catalog.schema.table for every Databricks table.')
+        parts = [table.catalog, table.db, table.name]
+        if parts not in dependencies.values():
+            dependencies[f'table_{len(dependencies)}'] = parts
+    rendered = tree.sql(dialect='databricks', unsupported_level=ErrorLevel.RAISE)
+    validate_sql(rendered, dependencies)
+    return rendered, dependencies
+
+
 def versioned_sql(sql,dependencies,versions):
     tree,tables=validate_sql(sql,dependencies)
     by_table={tuple(parts):alias for alias,parts in dependencies.items()}

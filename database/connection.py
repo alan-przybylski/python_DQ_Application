@@ -75,6 +75,8 @@ def initialize_database(database=None):
         upgrade_references(connection)
         from database.plain_sql import upgrade_plain_sql
         upgrade_plain_sql(connection)
+        from database.workspaces import upgrade_workspaces
+        upgrade_workspaces(connection, destination)
     finally:
         connection.close()
 

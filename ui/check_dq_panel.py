@@ -21,13 +21,19 @@ from ui.utils import place_window
 
 
 class CheckDqPanel:
-    def __init__(self, root, username, role, data_quality_root, time_var):
+    environment = None
+    profile = None
+
+    def __init__(self, root, username, role, data_quality_root, time_var, environment=None, profile=None):
+        self.environment, self.profile = environment, profile
         self.root, self.username, self.role = root, username, role
         self.data_quality_root, self.time_var = data_quality_root, time_var
         self.rules_dict, self.runs, self.current = {}, [], None
         place_window(root)
         root.title("DQ Studio / " + tr("Quality report"))
         header(root, "Quality report", username)
+        if environment:
+            tk.Label(root, text=('Databricks' if environment == 'databricks' else 'Local / SQLite') + (f' / {profile}' if profile else '')).pack(anchor='w', padx=20)
         footer(root, self.go_back, time_var)
         root.protocol("WM_DELETE_WINDOW", self.go_back)
         body = tk.Frame(root)
@@ -136,14 +142,17 @@ class CheckDqPanel:
         self.data_quality_root.deiconify()
 
     def get_tables_to_dq_check(self):
-        return list_tables()
+        from logic.workspaces import report_tables
+        return report_tables(self.environment, self.profile)
 
     def get_active_rules_for_table(self, table_name, execution_mode='local'):
         connection = get_connection()
         try:
             return connection.execute(
-                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND target_table=?" + (" AND execution_mode='databricks'" if execution_mode=='databricks' else '') + " ORDER BY id",
-                (table_name,),
+                "SELECT id,description FROM dq_rules WHERE status='ACTIVE' AND target_table=?"
+                + (" AND execution_mode='databricks'" if execution_mode=='databricks' else " AND sql_engine='sqlite'")
+                + (" AND id IN (SELECT rule_id FROM dq_remote_links WHERE profile=?)" if self.profile else '') + " ORDER BY id",
+                (table_name, self.profile) if self.profile else (table_name,),
             ).fetchall()
         finally:
             connection.close()
@@ -167,6 +176,10 @@ class CheckDqPanel:
         try:
             table = self.report_table.get()
             self.runs = runs_for_table(table) if table else []
+            from logic.workspaces import run_ids
+            allowed_runs = run_ids(self.environment, self.profile)
+            if allowed_runs is not None:
+                self.runs = [run for run in self.runs if run['id'] in allowed_runs]
             self.run_selector.configure(
                 values=[f"#{run['id']} / {run['started_at']} / {tr(run['status'])}"
                         + (f" / {run['rule_description']}" if run.get('rule_description') else '') for run in self.runs]
@@ -186,7 +199,7 @@ class CheckDqPanel:
             for widget in self.chart_frame.winfo_children():
                 widget.destroy()
             self.chart = draw_chart(
-                self.chart_frame, trend_for_table(table) if table else []
+                self.chart_frame, trend_for_table(table, self.environment, self.profile) if table else []
             )
             self.select_run()
         except Exception as error:
@@ -312,9 +325,9 @@ class CheckDqPanel:
         )
         dropdown.pack(fill="x")
         tk.Label(form, text=tr('Execution location')).pack(anchor='w',pady=6)
-        self.execution_location = tk.StringVar(value='Databricks' if self.get_remote_rule_count(self.selected_table.get()) else tr('Local'))
+        self.execution_location = tk.StringVar(value='Databricks' if self.environment == 'databricks' or (self.environment is None and self.get_remote_rule_count(self.selected_table.get())) else tr('Local'))
         location = ttk.Combobox(form,textvariable=self.execution_location,
-                                values=[tr('Local'),'Databricks'],state='readonly',width=38)
+                                values=([tr('Local'),'Databricks'] if self.environment is None else ['Databricks'] if self.environment == 'databricks' else [tr('Local')]),state='readonly',width=38)
         location.pack(fill='x')
         self.run_type = tk.StringVar(value="all")
         for value, label in (("all", "All rules"), ("single", "Single rule")):
@@ -357,7 +370,8 @@ class CheckDqPanel:
                 sync_button.pack_forget()
 
         def change_table(event=None):
-            self.execution_location.set('Databricks' if self.get_remote_rule_count(self.selected_table.get()) else tr('Local'))
+            if self.environment is None:
+                self.execution_location.set('Databricks' if self.get_remote_rule_count(self.selected_table.get()) else tr('Local'))
             update_rules()
         dropdown.bind("<<ComboboxSelected>>", change_table)
         location.bind("<<ComboboxSelected>>",update_rules)
@@ -410,7 +424,7 @@ class CheckDqPanel:
         dialog.protocol('WM_DELETE_WINDOW',lambda:(cancel.set(),dialog.destroy()))
         def worker():
             try:
-                events.put((True,run_remote_checks(self.username,link_id,cancel=cancel,table=table)))
+                events.put((True,run_remote_checks(self.username,link_id,cancel=cancel,table=table,profile=self.profile)))
             except Exception as error:
                 events.put((False,str(error)))
         def poll():

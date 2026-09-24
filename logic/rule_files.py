@@ -89,6 +89,8 @@ def import_rules(directory, actor):
             c.row_factory = dict_row_factory
             for data in definitions:
                 old = c.execute('SELECT * FROM dq_rules WHERE rule_key=?', (data['key'],)).fetchone()
+                if old and old['sql_engine'] != 'sqlite':
+                    raise ValueError('A local rule file cannot overwrite a native Databricks rule. Use a new key.')
                 values = (data['description'], data['rule_type'], data['table'], data['error_message'],
                           data['sql_query'], data['severity'], 'ACTIVE' if data['active'] else 'INACTIVE')
                 spec=json.dumps(data['cross_spec']) if data.get('cross_spec') else None
@@ -130,7 +132,7 @@ def export_rules(directory, actor):
             c.execute('BEGIN IMMEDIATE')
             require_superuser(c, actor)
             c.row_factory = dict_row_factory
-            rules = c.execute('SELECT * FROM dq_rules ORDER BY id').fetchall()
+            rules = c.execute("SELECT * FROM dq_rules WHERE sql_engine='sqlite' ORDER BY id").fetchall()
             # Persist identities before writing files so retries always target the same rule.
             for row in rules:
                 if not row['rule_key']:

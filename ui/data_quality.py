@@ -134,7 +134,7 @@ class DataQualityWindow:
             error_box(error, self.root)
 
     def load_rules(self):
-        self.rules = list_rules()
+        self.rules = [rule for rule in list_rules() if rule.get('sql_engine', 'sqlite') == 'sqlite']
         tables = sorted({row["target_table"] for row in self.rules})
         self.table_picker.configure(values=[tr("All tables"), *tables])
         self.render_rules()

@@ -11,7 +11,7 @@ from logic.databricks_import import connect_source
 from logic.databricks_sync import mappings, source_for, remote_definition, rows, import_run
 
 
-def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, table=None):
+def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, table=None, profile=None):
     c = get_connection()
     try:
         if not c.execute('SELECT 1 FROM users WHERE username=? COLLATE BINARY AND active=1', (actor,)).fetchone():
@@ -21,6 +21,8 @@ def run_remote_checks(actor, link_id=None, cancel=None, connect=connect_source, 
     finally:
         c.close()
     links = [l for l in mappings() if l['execution_mode']=='databricks' and l['rule_id'] in active
+             and any(key[0] == l['id'] for key in known)
+             and (profile is None or l['profile']==profile)
              and (table is None or l['target_table']==table)
              and (link_id is None or l['id']==link_id)]
     if not links:

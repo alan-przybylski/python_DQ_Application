@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Separate Local / SQLite and Databricks workspaces, with environment-filtered
+  reports and tickets and explicit data-transfer/snapshot actions.
+- Add a native Databricks SQL editor with remote column browsing, fully qualified
+  JOINs, bounded asynchronous previews and server-side cancellation. Local copies
+  of referenced datasets are not required.
+- Store native cloud rules as versioned drafts; publish validated Delta-backed
+  definitions through the existing contract 3 job runner. Distinguish draft,
+  pending and published states, retaining published snapshots until publication.
+- Preserve legacy SQLite rules and mappings through a backed-up additive schema
+  migration; keep native SQL out of local execution and local rule-file imports.
+
 - Show runnable local SQL in rule definitions instead of legacy Databricks
   templates. Resolve optional SOURCE placeholders consistently in SQL previews
   and rule forms, saving ordinary SQL and preserving literals/comments.

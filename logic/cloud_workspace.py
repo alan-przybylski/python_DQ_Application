@@ -119,6 +119,8 @@ def send_rule(actor,profile,rule_id,connect=connect_source):
         c.row_factory=dict_row_factory
         rule=c.execute('SELECT * FROM dq_rules WHERE id=?',(rule_id,)).fetchone()
         if not rule: raise ValueError('Select a rule.')
+        if rule['sql_engine'] != 'sqlite':
+            raise ValueError('Publish native cloud rules from the Databricks SQL workspace.')
         source=destination(profile,rule['target_table'])
         bindings=table_bindings(c,profile,source.hostname,source.catalog,source.schema)
         sql,dependencies=compile_sql(rule['sql_query'],source.catalog,source.schema,list_tables(),bindings)

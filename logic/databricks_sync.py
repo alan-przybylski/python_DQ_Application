@@ -56,7 +56,7 @@ def mappings():
     c = get_connection()
     c.row_factory = dict_row_factory
     try:
-        return c.execute('SELECT l.*,r.rule_key,r.description,r.target_table,r.execution_mode FROM dq_remote_links l JOIN dq_rules r ON r.id=l.rule_id ORDER BY l.id').fetchall()
+        return c.execute('SELECT l.*,r.rule_key,r.description,r.target_table,r.execution_mode,r.sql_engine FROM dq_remote_links l JOIN dq_rules r ON r.id=l.rule_id ORDER BY l.id').fetchall()
     finally:
         c.close()
 
@@ -128,7 +128,15 @@ def definition(link_id):
                    'description':rule['description'] or '', 'rule_type':rule['rule_type'], 'severity':rule['severity'],
                    'error_message':rule['error_message'] or '', 'active':rule['status']=='ACTIVE',
                    'source':[link['source_catalog'],link['source_schema'],link['source_table']], 'sql':link['remote_sql']}
-        if link.get('plain_sql'):
+        if rule.get('sql_engine') == 'databricks':
+            from integrations.plain_sql import native_sql
+            sql, dependencies = native_sql(rule['sql_query'])
+            source_alias = next((key for key, parts in dependencies.items() if parts == payload['source']), None)
+            if source_alias is None:
+                raise ValueError('The rule must read its selected table.')
+            dependencies.pop(source_alias)
+            payload.update(contract=3, sql=sql, references=dependencies)
+        elif link.get('plain_sql'):
             from integrations.plain_sql import compile_sql
             from logic.datasets import list_tables
             from logic.cloud_bindings import table_bindings
@@ -230,6 +238,8 @@ def accept_remote(link_id, actor, expected_remote, connect=connect_source):
             c.execute("UPDATE dq_rules SET description=?,rule_type=?,severity=?,error_message=?,status=?,version=?,execution_mode='databricks' WHERE id=?",
                       (payload['description'],payload['rule_type'],payload['severity'],payload['error_message'],'ACTIVE' if payload['active'] else 'INACTIVE',local_version,old['id']))
             c.execute('UPDATE dq_remote_links SET remote_sql=?,base_revision=? WHERE id=?',(payload['sql'],found['revision'],link_id))
+            if old.get('sql_engine') == 'databricks':
+                c.execute('UPDATE dq_rules SET sql_query=? WHERE id=?', (payload['sql'], old['id']))
             c.execute('INSERT OR IGNORE INTO dq_remote_versions(link_id,revision,local_version,payload) VALUES(?,?,?,?)',
                       (link_id,found['revision'],local_version,canonical(payload)))
     finally:
@@ -340,7 +350,7 @@ def import_run(link, run, result, errors, actor):
         c.close()
 
 
-def synchronize(actor, auto_only=False, cancel=None, connect=connect_source, detailed=False):
+def synchronize(actor, auto_only=False, cancel=None, connect=connect_source, detailed=False, profile=None):
     with ExitStack() as stack:
         connections={}
         @contextmanager
@@ -349,7 +359,7 @@ def synchronize(actor, auto_only=False, cancel=None, connect=connect_source, det
             if key not in connections:
                 connections[key]=stack.enter_context(connect(source))
             yield connections[key]
-        report = _synchronize(actor,auto_only,cancel,cached)
+        report = _synchronize(actor,auto_only,cancel,cached,profile)
         if detailed:
             return report
         if report.errors:
@@ -357,9 +367,13 @@ def synchronize(actor, auto_only=False, cancel=None, connect=connect_source, det
         return report.imported
 
 
-def _synchronize(actor, auto_only=False, cancel=None, connect=connect_source):
+def _synchronize(actor, auto_only=False, cancel=None, connect=connect_source, profile=None):
     report = SyncReport()
     for link in mappings():
+        if profile is not None and link['profile'] != profile:
+            continue
+        if link['sql_engine'] == 'databricks' and not link['base_revision']:
+            continue
         if link['execution_mode']!='databricks' or (auto_only and not link['auto_sync']):
             continue
         target = name(link['control_catalog'],link['control_schema'],'dq_runs')

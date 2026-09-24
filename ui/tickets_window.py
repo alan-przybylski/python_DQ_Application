@@ -12,12 +12,15 @@ from ui.utils import place_window
 
 
 class TicketsWindow:
-    def __init__(self, root, username, role, dashboard_root, time_var):
+    def __init__(self, root, username, role, dashboard_root, time_var, environment=None, profile=None):
+        self.environment, self.profile = environment, profile
         self.root, self.username = root, username
         self.dashboard_root = dashboard_root
         place_window(root)
         root.title('DQ Studio / ' + tr('DQ tickets'))
         header(root, 'DQ tickets', username)
+        if environment:
+            tk.Label(root, text='Databricks' if environment == 'databricks' else 'Local / SQLite').pack(anchor='w', padx=20)
         footer(root, self.go_back, time_var)
         root.protocol('WM_DELETE_WINDOW', self.go_back)
         bar = tk.Frame(root)
@@ -50,6 +53,10 @@ class TicketsWindow:
         try:
             self.tree.delete(*self.tree.get_children())
             rows = list_tickets()
+            from logic.workspaces import run_ids
+            allowed = run_ids(self.environment, self.profile)
+            if allowed is not None:
+                rows = [row for row in rows if row['failure_run_id'] in allowed]
             for row in rows:
                 scope = self.scope.get()
                 if scope == tr('Open tickets') and row['status'] in ('closed', 'cancelled'):

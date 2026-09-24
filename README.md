@@ -18,6 +18,59 @@ clean history, separate from the original course project.
 
 [Try the demo](#quick-start) · [Walkthrough](docs/DEMO.md) · [Architecture](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
+## Local and Databricks workspaces (DEV)
+
+Choose **Local / SQLite** or **Databricks** on the dashboard before opening the
+SQL editor, rules, quality reports or tickets. CSV imports, local exports and
+import history are explicitly marked Local. Transfers and synchronization have
+their own screen; downloading a snapshot is optional.
+
+In the Databricks editor select a saved connection profile, enter a catalog and
+schema, and click **Browse cloud tables**. The browser shows remote column types,
+including decimal precision. SQL runs in that profile's warehouse; referenced
+tables do not need to exist in SQLite. Use fully qualified names:
+
+```sql
+SELECT p.product_id AS id,
+       p.country_code,
+       CASE WHEN c.country_code IS NULL THEN 1 ELSE 0 END AS dq_check
+FROM workspace.dq_app.products AS p
+LEFT JOIN workspace.dq_app.ref_countries AS c
+    ON p.country_code = c.country_code;
+```
+
+The preview is read-only, returns up to 500 rows, and requests server cancellation
+after 60 seconds of query execution or when Cancel is clicked. Connection/OAuth
+time is separate from that query limit. Job execution checks the complete datasets,
+without the editor's preview row limit.
+
+**Save as new cloud rule** stores a local draft of the Databricks definition.
+Select the draft and **Publish saved rule** to validate its Delta dependencies
+and output columns (`id`, one checked field, `dq_check`) in the warehouse, then
+publish it to the profile catalog's `dq_control`. Scheduled jobs configured for
+that same control catalog/schema pick it up on their next execution. Native cloud
+rules use the existing contract 3 runner and require Delta source/reference
+tables with readable snapshot history.
+
+**Save cloud changes** creates a new local version, preserving previous SQL and
+published snapshots. The list distinguishes Draft, Pending publication and
+Published. Changes, including the Active checkbox, reach scheduled jobs only
+after publication. The editor and the selected saved rule must match before
+publishing; unsaved edits are never silently published.
+
+Cloud results remain in `dq_control.dq_runs`, `dq_results` and `dq_errors`.
+**Download all results** in the cloud workspace downloads the selected profile's
+history to the app, one check/run per history object, with duplicate downloads
+ignored. Cloud reports include datasets with no local copy. Reports filter by
+execution environment; tickets filter by the environment of their failure run.
+Existing legacy SQLite-authored rules and their remote mappings are preserved
+and remain available in the local library and transfer screen. New native cloud
+rules are edited in Databricks workspace and are excluded from local TOML exports.
+
+The schema upgrade adds a SQL-engine marker and backs up established local
+databases before applying it. It does not change dataset values or rewrite
+existing rules, schedules or historical results.
+
 ## One workspace, from import to investigation
 
 | Step | What you can do |

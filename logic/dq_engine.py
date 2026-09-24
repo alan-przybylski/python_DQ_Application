@@ -102,6 +102,7 @@ def run_checks(table, username, rule_id=None, include_remote=False):
             raise AppError("Account is inactive.")
         rules = writer.execute(
             "SELECT id,version,description,error_message,sql_query,severity FROM dq_rules WHERE status='ACTIVE' AND target_table=?"
+            + " AND sql_engine='sqlite'"
             + ("" if include_remote else " AND execution_mode='local'")
             + (" AND id=?" if rule_id is not None else "")
             + " ORDER BY id",
@@ -246,18 +247,21 @@ def run_details(run_id):
         connection.close()
 
 
-def trend_for_table(table):
+def trend_for_table(table, environment=None, profile=None):
     connection = get_connection()
     try:
-        return connection.execute(
+        rows = connection.execute(
             """SELECT d.rule_id,d.id,d.timestamp,
-            100.0*d.passed_count/NULLIF(d.passed_count+d.failed_count,0)
+            100.0*d.passed_count/NULLIF(d.passed_count+d.failed_count,0),d.run_id
             FROM dq_results d JOIN dq_rules r ON r.id=d.rule_id
             LEFT JOIN dq_runs run ON run.id=d.run_id
             WHERE COALESCE(run.table_name,r.target_table)=? AND r.status='ACTIVE'
             ORDER BY d.timestamp,d.id""",
             (table,),
         ).fetchall()
+        from logic.workspaces import run_ids
+        allowed = run_ids(environment, profile)
+        return [row[:4] for row in rows if allowed is None or row[4] in allowed]
     finally:
         connection.close()
 

@@ -27,7 +27,7 @@ class SqlWorkspace:
         place_window(root, 1200, 800)
         root.resizable(True, True)
         root.title("DQ Studio / " + tr("SQL editor"))
-        header(root, "SQL editor", username)
+        header(root, "Local / SQLite SQL", username)
         footer(root, self.go_back, time_var)
         root.protocol("WM_DELETE_WINDOW", self.go_back)
         tk.Label(root, text=tr("1. Choose a table   →   2. Run SQL   →   3. Create a rule"),

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Show runnable local SQL in rule definitions instead of legacy Databricks
+  templates. Resolve optional SOURCE placeholders consistently in SQL previews
+  and rule forms, saving ordinary SQL and preserving literals/comments.
+- Reuse existing local-to-Databricks table mappings when publishing new rules,
+  including legacy differently named tables, without changing source keys.
+
+- Preserve Databricks logical date, timestamp, Boolean, integer, string and
+  fixed-precision decimal types through local import, schema display and upload.
+  Validate CSV values and type edits; store decimals losslessly as text in SQLite.
+- Add atomic, backed-up schema alignment that preserves dataset values, technical
+  IDs and history; existing DQ anomalies require explicit preservation.
+
+- Daily Databricks notebooks execute checks by default, print execution counts,
+  and fail explicitly when no active rules are published. Document explicit job
+  parameters so setup-only runs cannot be mistaken for completed DQ checks.
+- Result downloads show imported/existing counts, latest remote execution and
+  per-run errors; incomplete runs no longer prevent other checks from importing.
+- Report history sorts by execution time and identifies each remote check by
+  rule description, status and remote run ID. Repeated downloads remain idempotent.
+
 ## 0.3.0 — 2026-09-17
 
 ### Added

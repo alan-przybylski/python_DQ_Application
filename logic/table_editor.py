@@ -11,6 +11,7 @@ import uuid
 from config.i18n import AppError
 from database.connection import get_connection
 from logic.datasets import checked_table, identifier, quote, table_columns, TYPES
+from logic.dataset_types import INTEGER_BITS, supported, storage_type, typed_value, decimal_spec
 
 
 def backup_locked_database(connection, reason):
@@ -33,7 +34,9 @@ def strict_conversion(value, kind):
     """No truncation, lost leading zeros, rounding or NULL/empty conflation."""
     if value is None:
         return None
-    if kind == "TEXT":
+    if kind in ('DATE','TIMESTAMP','TIMESTAMP_NTZ','BOOLEAN') or decimal_spec(kind):
+        return typed_value(value, kind)
+    if kind in ("TEXT", "STRING"):
         if isinstance(value, bytes):
             raise AppError("Binary values cannot be converted automatically.")
         return str(value)
@@ -46,9 +49,10 @@ def strict_conversion(value, kind):
         decimal = Decimal(str(value))
         if not decimal.is_finite():
             raise ValueError
-        if kind == "INTEGER":
+        if kind in INTEGER_BITS:
             number = int(decimal)
-            if decimal != number or not -(2**63) <= number < 2**63:
+            bits = INTEGER_BITS[kind]
+            if decimal != number or not -(2**(bits-1)) <= number < 2**(bits-1):
                 raise ValueError
             return number
         if kind == "REAL":
@@ -123,7 +127,8 @@ def simple_definitions(connection, table):
         raise AppError(
             "This table has advanced SQL dependencies. Use a reviewed migration."
         )
-    definitions = [part.strip() for part in body[1].split(",")]
+    # Decimal storage declarations contain a comma inside a quoted type name.
+    definitions = [part.strip() for part in re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', body[1])]
     columns = table_columns(table, connection)
     if len(definitions) != len(columns):
         raise AppError(
@@ -131,7 +136,8 @@ def simple_definitions(connection, table):
         )
     for definition, column in zip(definitions, columns):
         name = re.escape(column["name"])
-        pattern = rf'(?:"{name}"|{name})\s+(?:TEXT|INTEGER|REAL)(?:\s+COLLATE\s+(?:MYSQL_AI_CI|BINARY|NOCASE|RTRIM))?(?:\s+PRIMARY\s+KEY)?(?:\s+AUTOINCREMENT)?(?:\s+NOT\s+NULL)?'
+        kind = re.escape(storage_type(column['type']))
+        pattern = rf'(?:"{name}"|{name})\s+{kind}(?:\s+COLLATE\s+(?:MYSQL_AI_CI|BINARY|NOCASE|RTRIM))?(?:\s+PRIMARY\s+KEY)?(?:\s+AUTOINCREMENT)?(?:\s+NOT\s+NULL)?'
         if not re.fullmatch(pattern, definition, re.I):
             raise AppError(
                 "This table has advanced SQL dependencies. Use a reviewed migration."
@@ -164,8 +170,8 @@ def edit_column(table, action, column=None, name=None, kind="TEXT", required=Fal
             connection.execute("BEGIN IMMEDIATE")
             checked_table(connection, table)
             columns = table_columns(table, connection)
-            if action not in {"add", "modify", "drop"} or kind not in TYPES:
-                raise AppError("Supported types: TEXT, INTEGER, REAL.")
+            if action not in {"add", "modify", "drop"} or not supported(kind):
+                raise AppError("Unsupported dataset type: {kind}", kind=kind)
             current = next((item for item in columns if item["name"] == column), None)
             if action != "add" and current is None:
                 raise AppError("Select a column.")
@@ -199,7 +205,7 @@ def edit_column(table, action, column=None, name=None, kind="TEXT", required=Fal
             backup = backup_locked_database(connection, "before_column_edit")
             if action == "add":
                 connection.execute(
-                    f"ALTER TABLE {quote(table)} ADD COLUMN {quote(name)} {kind}"
+                    f"ALTER TABLE {quote(table)} ADD COLUMN {quote(name)} {storage_type(kind)}"
                     + (" NOT NULL" if required else "")
                 )
             elif action == "drop":
@@ -215,7 +221,7 @@ def edit_column(table, action, column=None, name=None, kind="TEXT", required=Fal
                 index = next(i for i, item in enumerate(columns) if item is current)
                 collation = re.search(r"\s+COLLATE\s+\w+", definitions[index], re.I)
                 definitions[index] = (
-                    f"{quote(name)} {kind}"
+                    f"{quote(name)} {storage_type(kind)}"
                     + (collation[0] if collation else "")
                     + (" NOT NULL" if required else "")
                 )
@@ -288,3 +294,81 @@ def protect_rules_for_add(connection, table, rule_id, query):
             "Rule #{rule} uses a wildcard or expression. Review it before adding columns.",
             rule=rule_id,
         )
+
+
+def align_column_types(table, source_columns, *, preserve_invalid=False):
+    """Align a snapshot's declarations atomically without replacing any records.
+
+The optional local technical id is retained. All stored values, IDs, constraints,
+    rules and history must survive unchanged; unsupported schemas fail closed.
+    preserve_invalid is an explicit opt-in for retaining existing DQ anomalies;
+    it changes declarations only and never repairs or normalizes their values.
+"""
+    connection = get_connection()
+    try:
+        with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            checked_table(connection, table)
+            columns = table_columns(table, connection)
+            desired = {col['name']: col['type'] for col in source_columns}
+            if len(desired) != len(source_columns):
+                raise AppError('Column names must be unique.')
+            current_names = {col['name'] for col in columns}
+            if set(desired) not in (current_names, current_names - {'id'}):
+                raise AppError('Source and local column names differ. No types were changed.')
+            definitions = simple_definitions(connection, table)
+            changes = []
+            def affinity(kind):
+                if kind in ('STRING','TEXT') or decimal_spec(kind): return 'TEXT'
+                if kind in INTEGER_BITS or kind == 'BOOLEAN': return 'INTEGER'
+                return kind
+            for i, col in enumerate(columns):
+                kind = desired.get(col['name'], col['type'])
+                if not supported(kind):
+                    raise AppError('Unsupported dataset type: {kind}',kind=kind)
+                if col['pk']:
+                    if col['name'] == 'id' and col['type'] == 'INTEGER' and kind in INTEGER_BITS:
+                        kind = 'INTEGER'
+                    elif kind != col['type']:
+                        raise AppError('The technical id column cannot be edited.')
+                if kind != col['type']:
+                    if affinity(kind) != affinity(col['type']):
+                        protect_rules(connection, table, col['name'])
+                    pattern = r'^("?[A-Za-z_][A-Za-z0-9_]*"?\s+)' + re.escape(storage_type(col['type']))
+                    definitions[i] = re.sub(pattern,lambda m:m[1]+storage_type(kind),definitions[i],count=1,flags=re.I)
+                    changes.append((col['name'],col['type'],kind))
+                col['new_type'] = kind
+            if not changes:
+                return [], None
+            backup = backup_locked_database(connection,'before_type_alignment')
+            temporary = 'dq_edit_' + uuid.uuid4().hex
+            sequence = connection.execute('SELECT seq FROM sqlite_sequence WHERE name=?',(table,)).fetchone()
+            connection.execute(f'CREATE TABLE {quote(temporary)} ({", ".join(definitions)})')
+            reader = connection.execute(f'SELECT * FROM {quote(table)} ORDER BY id')
+            while rows := reader.fetchmany(500):
+                for row in rows:
+                    for value, col in zip(row,columns):
+                        if col['new_type'] != col['type']:
+                            try:
+                                strict_conversion(value,col['new_type'])
+                            except AppError:
+                                if not preserve_invalid:
+                                    raise
+                # Preserve the original representation, including decimal scale.
+                connection.executemany(f'INSERT INTO {quote(temporary)} VALUES ({",".join("?" for _ in columns)})',rows)
+            old = connection.execute(f'SELECT * FROM {quote(table)} ORDER BY id')
+            new = connection.execute(f'SELECT * FROM {quote(temporary)} ORDER BY id')
+            for before, after in zip(old,new,strict=True):
+                if before != after or tuple(map(type,before)) != tuple(map(type,after)):
+                    raise AppError('Conversion would lose data. No changes were saved.')
+            connection.execute(f'DROP TABLE {quote(table)}')
+            connection.execute(f'ALTER TABLE {quote(temporary)} RENAME TO {quote(table)}')
+            if sequence:
+                updated = connection.execute('UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name=?',(sequence[0],table))
+                if not updated.rowcount:
+                    connection.execute('INSERT INTO sqlite_sequence(name,seq) VALUES(?,?)',(table,sequence[0]))
+            if connection.execute('PRAGMA foreign_key_check').fetchone():
+                raise AppError('This table has advanced SQL dependencies. Use a reviewed migration.')
+            return changes, backup
+    finally:
+        connection.close()

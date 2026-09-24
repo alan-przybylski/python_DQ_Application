@@ -72,12 +72,8 @@ class RuleDetailsWindow:
         readonly_text(page, metadata, height=3, expand=False)
         tk.Label(page, text=tr("SQL query") + "  ·  dq_check: 0 = PASS, 1 = FAIL", anchor="w").pack(fill="x")
         sql = current['sql_query'] or ''
-        if current.get('execution_mode') == 'databricks':
-            from logic.databricks_sync import mappings
-            link = next((row for row in mappings() if row['rule_id']==self.rule_id),None)
-            if link:
-                sql = '-- Databricks SQL template\n'+link['remote_sql']
         readonly_text(page, sql)
+        tk.Label(page,text=tr('This SQL runs locally. Databricks table names are resolved when publishing.'),wraplength=950,anchor='w').pack(fill='x')
         if current.get('execution_mode') == 'databricks':
             tk.Label(page,text=tr('Changes to mapped rules take effect in Databricks only after publishing.'),wraplength=950,anchor='w').pack(fill='x')
         actions = tk.Frame(page)

@@ -8,7 +8,7 @@ from database.connection import get_connection
 from logic.datasets import list_tables
 from logic.databricks_profiles import load_profiles,select_profile
 from logic.cloud_workspace import upload_table,send_rule,destination
-from logic.databricks_sync import synchronize,mappings
+from logic.databricks_sync import synchronize,mappings,SyncReport
 from logic.databricks_manual import run_remote_checks
 from ui.common import header,footer,error_box
 from ui.utils import place_window
@@ -72,7 +72,7 @@ class CloudWindow:
         button(rule_actions,'Send rule to Databricks',self.send_rule)
         button(rule_actions,'Run selected in Databricks',self.run_selected)
         button(rule_actions,'Run all in Databricks',lambda:self.start(lambda:run_remote_checks(self.username,cancel=self.cancel)))
-        button(rule_actions,'Download all results',lambda:self.start(lambda:synchronize(self.username,cancel=self.cancel)))
+        button(rule_actions,'Download all results',lambda:self.start(lambda:synchronize(self.username,cancel=self.cancel,detailed=True)))
         self.status=tk.StringVar(root,value='')
         tk.Label(body,textvariable=self.status,wraplength=940,justify='left').pack(fill='x',pady=12)
         self.inputs=[profile,table,picker,self.replace_box]
@@ -132,7 +132,15 @@ class CloudWindow:
             self.busy=False
             for widget in self.buttons:widget.configure(state='normal')
             for widget in self.inputs:widget.configure(state='normal' if widget is self.replace_box else 'readonly')
-            self.status.set(tr('Done.')+(f' ({value})' if isinstance(value,int) else '') if ok else value)
+            if ok and isinstance(value,SyncReport):
+                self.status.set(tr('Downloaded checks: {new}. Already imported: {existing}. Remote checks found: {available}.',
+                                   new=value.imported,existing=value.existing,available=value.available))
+                if value.imported:
+                    self.parent.event_generate('<<DQResultsImported>>',when='tail')
+                show = messagebox.showwarning if value.errors or not value.available else messagebox.showinfo
+                show(tr('Databricks results'),value.message(),parent=self.root)
+            else:
+                self.status.set(tr('Done.')+(f' ({value})' if isinstance(value,int) else '') if ok else value)
         self.poll_id=self.root.after(100,self.poll)
 
     def close(self):

@@ -37,6 +37,37 @@ def test_sql_bindings_and_versions(query):
 
 
 @pytest.mark.parametrize('query',[
+    'SELECT customers.id,customers.name,0 AS dq_check FROM customers',
+    'SELECT c.id,c.name,0 AS dq_check FROM customers c',
+    'WITH c AS (SELECT * FROM customers) SELECT id,name,0 AS dq_check FROM c',
+])
+def test_existing_remote_name_binding_preserves_local_qualifiers(query):
+    bindings={'customers':['workspace','dq_app','remote_customers']}
+    sql,deps=compile_sql(query,'workspace','dq_app',['customers'],bindings)
+    assert deps == bindings
+    assert '`workspace`.`dq_app`.`remote_customers`' in sql
+    assert '{{' not in sql
+    rendered=versioned_sql(sql,deps,{'customers':4})
+    assert '`remote_customers` VERSION AS OF 4' in rendered
+
+
+def test_new_rule_reuses_legacy_remote_table_mapping(workspace):
+    from logic.databricks_sync import save_mapping
+    old=save_rule('Existing','SQL','countries','SELECT id,country_code,0 AS dq_check FROM countries','Bad')
+    save_mapping(old,'Admin','cloud','workspace','dq_control','workspace','dq_app','remote_countries',
+                 'SELECT id,country_code,0 AS dq_check FROM {{source}}')
+    new=save_rule('New','SQL','countries','SELECT id,country_code,0 AS dq_check FROM countries','Bad')
+    remote=FakeCloud()
+    send_rule('Admin','cloud',new,connect=lambda source:remote)
+    link=next(l for l in mappings() if l['rule_id']==new)
+    _,payload=definition(link['id'])
+    assert link['source_table']=='remote_countries'
+    assert payload['source']==['workspace','dq_app','remote_countries']
+    assert '`remote_countries`' in payload['sql'] and '{{' not in payload['sql']
+    assert run_details(run_checks('countries','Admin',new,include_remote=True))['passed']==2
+
+
+@pytest.mark.parametrize('query',[
     'DELETE FROM countries','SELECT * FROM countries; DROP TABLE countries',
     'SELECT * FROM sqlite_master','SELECT * FROM read_csv("secret.csv")',
     'SELECT * FROM other.countries',
@@ -87,6 +118,24 @@ def test_upload_keeps_name_and_ids(workspace):
     inserts=[params for sql,params in remote.statements if sql.startswith('INSERT INTO')]
     assert inserts==[[10,'PL','PLN',20,'FR','EUR']]
     assert remote.statements[-1][0].startswith('DROP TABLE IF EXISTS')
+
+
+def test_upload_preserves_date_and_exact_decimal_types(workspace):
+    from datetime import date
+    from decimal import Decimal
+    from logic.datasets import create_table
+    c=get_connection()
+    with c:
+        create_table(c,'typed_upload',[{'name':'launch_date','type':'DATE'},
+                                       {'name':'price','type':'DECIMAL(10,2)'}])
+        c.execute("INSERT INTO typed_upload(launch_date,price) VALUES('2026-09-24','123.40')")
+    c.close()
+    remote=FakeCloud()
+    assert upload_table('Admin','cloud','typed_upload',connect=lambda source:remote)==1
+    schema=next(sql for sql,_ in remote.statements if sql.startswith('CREATE TABLE') and '__dq_upload_' in sql)
+    assert '`launch_date` DATE' in schema and '`price` DECIMAL(10,2)' in schema
+    values=next(params for sql,params in remote.statements if sql.startswith('INSERT INTO'))
+    assert values == [1,date(2026,9,24),Decimal('123.40')]
 
 
 def test_interrupted_upload_never_replaces_destination(workspace):

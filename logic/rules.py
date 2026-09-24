@@ -3,6 +3,7 @@ import json
 from config.i18n import AppError
 from database.connection import get_connection
 from logic.dq_engine import validate_rule, error_text
+from logic.sql_source import bind_source
 
 
 def save_rule(description, rule_type, table, sql, message, rule_id=None, severity='medium', cross_spec=None):
@@ -10,6 +11,7 @@ def save_rule(description, rule_type, table, sql, message, rule_id=None, severit
         raise AppError('Select Low, Medium or High severity.')
     if not description.strip() or not rule_type.strip():
         raise AppError("Description and rule type are required.")
+    sql = bind_source(sql, table)
     validate_rule(sql, table)
     connection = get_connection()
     try:

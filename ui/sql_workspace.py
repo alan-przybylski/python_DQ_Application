@@ -182,10 +182,11 @@ class SqlWorkspace:
         self.results.delete(*self.results.get_children())
         self.status.set(tr("Running query…"))
         database = config["database"]
+        source_table = self.selected_table()
 
         def worker():
             try:
-                self.messages.put((True, preview_query(sql, self.cancel, database)))
+                self.messages.put((True, preview_query(sql, self.cancel, database, source_table=source_table)))
             except Exception as error:
                 self.messages.put((False, str(error)))
 

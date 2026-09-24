@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from config.i18n import AppError
 from database.connection import get_connection
 from logic.datasets import list_tables
+from logic.sql_source import bind_source
 
 
 @dataclass
@@ -17,9 +18,10 @@ class Preview:
     seconds: float
 
 
-def preview_query(sql, cancel, database=None, limit=500, timeout=10):
+def preview_query(sql, cancel, database=None, limit=500, timeout=10, source_table=None):
     if not sql.strip():
         raise AppError("Write a query first.")
+    sql = bind_source(sql,source_table)
     start = time.monotonic()
     connection = get_connection(database)
     try:

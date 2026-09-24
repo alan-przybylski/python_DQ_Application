@@ -467,6 +467,26 @@ PL.update(
 )
 
 
+PL.update({
+    'Record {record}, column {column} ({kind}): {value}': 'Rekord {record}, kolumna {column} ({kind}): {value}',
+    'Upload blocked by incompatible values. No remote data was changed.\n{details}\nTo preserve these DQ errors, upload the affected columns as STRING: {columns}.': 'Wysyłanie zablokowane przez wartości niezgodne z typem. Nie zmieniono danych w chmurze.\n{details}\nAby zachować te błędy DQ, wyślij wskazane kolumny jako STRING: {columns}.',
+    'Select a table for the SOURCE placeholder, or use its actual name in FROM.': 'Wybierz tabelę dla znacznika SOURCE albo wpisz jej nazwę w FROM.',
+    'This SQL runs locally. Databricks table names are resolved when publishing.': 'Ten SQL działa lokalnie. Nazwy tabel Databricks są dopasowywane przy publikowaniu.',
+    'Use the local table name in FROM. Optional {{{{SOURCE}}}} means the selected table.': 'W FROM użyj lokalnej nazwy tabeli. Opcjonalne {{{{SOURCE}}}} oznacza wybraną tabelę.',
+    'Unsupported dataset type: {kind}': 'Nieobsługiwany typ danych: {kind}',
+    'Value does not fit {kind}. No data was saved.': 'Wartość nie pasuje do typu {kind}. Nie zapisano danych.',
+    'Source and local column names differ. No types were changed.': 'Nazwy kolumn źródłowych i lokalnych różnią się. Nie zmieniono typów.',
+    'Databricks results': 'Wyniki Databricks',
+    'Downloaded checks: {new}. Already imported: {existing}. Remote checks found: {available}.': 'Pobrano checków: {new}. Już zaimportowane: {existing}. Znaleziono wykonań w chmurze: {available}.',
+    'Imported execution failures: {count}. Open run history for details.': 'Pobrano wykonań zakończonych błędem: {count}. Szczegóły znajdziesz w historii uruchomień.',
+    'Latest remote check: {date}': 'Najnowsze wykonanie w chmurze: {date}',
+    'No published rules are linked. Send rules to Databricks first.': 'Brak powiązanych opublikowanych reguł. Najpierw wyślij reguły do Databricks.',
+    'Result locations: {targets}': 'Lokalizacje historii: {targets}',
+    'No new checks downloaded. If daily runs are missing, check setup_only=false and the catalog/schema in the scheduled job.': 'Nie pobrano nowych checków. Jeśli brakuje codziennych wykonań, sprawdź setup_only=false oraz katalog i schemat w parametrach zaplanowanego joba.',
+    'Download cancelled. Completed imports were retained.': 'Anulowano pobieranie. Zachowano już zaimportowane wykonania.',
+})
+
+
 def tr(message, **values):
     return (PL.get(message, message) if _language == "PL" else message).format(**values)
 

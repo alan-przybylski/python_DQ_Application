@@ -150,6 +150,133 @@ def test_standalone_notebook_compiles(tmp_path):
     assert 'def run_job(' in notebook
 
 
+class HistoryCursor:
+    def __init__(self, bundles):
+        self.bundles = bundles
+        self.buffer = []
+
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+
+    def execute(self, sql, params=()):
+        if '`dq_runs`' in sql:
+            records = [b[0] for b in self.bundles if b[0]['rule_key'] == params[0]]
+        elif '`dq_results`' in sql:
+            records = [r for b in self.bundles for r in b[1] if r['run_id'] == params[0]]
+        else:
+            records = [e for b in self.bundles for e in b[2] if e['run_id'] == params[0]]
+        keys = list(records[0]) if records else []
+        self.description = [(key,) for key in keys]
+        self.buffer = [tuple(row[key] for key in keys) for row in records]
+
+    def fetchmany(self, n):
+        result, self.buffer = self.buffer[:n], self.buffer[n:]
+        return result
+
+
+def test_daily_checks_are_separate_history_objects_and_retry_is_idempotent(linked):
+    from logic.databricks_sync import synchronize
+    from logic.dq_engine import runs_for_table, run_details
+    link, payload = linked
+    bundles = [bundle(payload, f'day-{day}', days=day, failed=day % 2) for day in range(3)]
+    connect = lambda source: FakeRemote(HistoryCursor(bundles))
+    report = synchronize('Admin', connect=connect, detailed=True)
+    assert (report.imported, report.existing, report.available) == (3, 0, 3)
+    runs = runs_for_table('customers')
+    assert len(runs) == 3
+    assert [run_details(r['id'])['remote']['remote_run_id'] for r in runs] == ['day-2','day-1','day-0']
+    assert all(r['rules_requested'] == 1 and r['rule_description'] == payload['description'] for r in runs)
+    repeat = synchronize('Admin', connect=connect, detailed=True)
+    assert (repeat.imported, repeat.existing) == (0, 3)
+    assert '2026-01-03' in repeat.message()
+    assert len(runs_for_table('customers')) == 3
+
+
+def test_bad_run_does_not_block_later_days_or_other_checks(linked):
+    from logic.databricks_sync import synchronize
+    link, payload = linked
+    bad = bundle(payload, 'incomplete')
+    later = bundle(payload, 'next-day', days=1, failed=0)
+    rid = save_rule('Second check','required','customers','SELECT id,name,0 AS dq_check FROM customers','Missing')
+    save_mapping(rid,'Admin','test','workspace','dq_control','workspace','data','customers',payload['sql'])
+    other_link, other_payload = definition(mappings()[-1]['id'])
+    c = get_connection()
+    with c:
+        c.execute("UPDATE dq_rules SET execution_mode='databricks' WHERE id=?", (rid,))
+        c.execute('INSERT INTO dq_remote_versions VALUES(?,?,?,?)',
+                  (other_link['id'],revision(other_payload),'1.0',canonical(other_payload)))
+    c.close()
+    other = bundle(other_payload, 'other-check', days=1, failed=0)
+    report = synchronize('Admin', detailed=True, connect=lambda source: FakeRemote(HistoryCursor([
+        (bad[0],bad[1],[]), later, other])))
+    assert report.imported == 2
+    assert len(report.errors) == 1 and 'incomplete' in report.errors[0]
+    c = get_connection()
+    assert c.execute('SELECT COUNT(*) FROM dq_runs').fetchone()[0] == 2
+    assert 'incomplete' in c.execute('SELECT last_error FROM dq_remote_links WHERE id=?',(link['id'],)).fetchone()[0]
+    c.close()
+
+
+def test_sync_reports_execution_failure_and_empty_remote_history(linked):
+    from logic.databricks_sync import synchronize
+    link, payload = linked
+    empty = synchronize('Admin', detailed=True, connect=lambda source: FakeRemote(HistoryCursor([])))
+    assert empty.available == 0 and 'setup_only=false' in empty.message()
+    run, _, _ = bundle(payload)
+    run.update(status='failed',execution_error='SQL failed')
+    report = synchronize('Admin', detailed=True, connect=lambda source: FakeRemote(HistoryCursor([(run,[],[])])))
+    assert report.imported == report.failed_runs == 1
+
+
+def test_import_rejects_evidence_from_different_run(linked):
+    link, payload = linked
+    run, result, errors = bundle(payload)
+    errors[0]['run_id'] = 'another-run'
+    with pytest.raises(ValueError, match='another remote run'):
+        import_run(link,run,result,errors,'Admin')
+
+
+def test_notebook_executes_checks_by_default_and_explains_setup_only(monkeypatch,capsys):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from integrations import databricks_runner
+    calls = []
+    monkeypatch.setattr(databricks_runner,'setup',lambda *args: calls.append('setup'))
+    monkeypatch.setattr(databricks_runner,'run_job',lambda *args: calls.append('run') or {'completed':3})
+    class Widgets:
+        def __init__(self, initial=None): self.values = dict(initial or {})
+        def text(self, key, default): self.values.setdefault(key,default)
+        def dropdown(self, key, default, choices): self.values.setdefault(key,default)
+        def get(self, key): return self.values[key]
+    code = Path('databricks_dq_job.py').read_text(encoding='utf-8')
+    exec(compile(code,'job','exec'),{'dbutils':SimpleNamespace(widgets=Widgets()),'spark':object()})
+    assert calls == ['setup','run']
+    calls.clear()
+    exec(compile(code,'job','exec'),{'dbutils':SimpleNamespace(widgets=Widgets({'setup_only':'true'})),'spark':object()})
+    assert calls == ['setup']
+    assert 'SETUP ONLY: no checks executed' in capsys.readouterr().out
+
+
+def test_job_without_active_rules_is_not_a_success(linked,monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from integrations.databricks_runner import run_job
+    sql = ModuleType('pyspark.sql')
+    sql.functions = SimpleNamespace()
+    types = ModuleType('pyspark.sql.types')
+    for name in ('ByteType','ShortType','IntegerType','LongType'):
+        setattr(types,name,type(name,(),{}))
+    monkeypatch.setitem(sys.modules,'pyspark',ModuleType('pyspark'))
+    monkeypatch.setitem(sys.modules,'pyspark.sql',sql)
+    monkeypatch.setitem(sys.modules,'pyspark.sql.types',types)
+    payload = {**linked[1],'active':False}
+    for records in ([],[{'rule_key':payload['rule_key'],'payload':canonical(payload),'revision':revision(payload)}]):
+        spark = SimpleNamespace(conf=SimpleNamespace(set=lambda *args:None),
+                                table=lambda name:SimpleNamespace(collect=lambda:records))
+        with pytest.raises(RuntimeError,match='No active DQ rules'):
+            run_job(spark,'workspace','dq_control')
+
+
 class ExecutionCursor(FakeCursor):
     def __init__(self,payload,flag=1):
         super().__init__(payload)
@@ -277,3 +404,48 @@ def test_sync_window(linked,gui_root):
     finally:
         for child in root.winfo_children():
             child.destroy()
+
+
+@pytest.mark.gui
+def test_sync_dialog_explains_zero_downloads(linked,gui_root,monkeypatch):
+    import tkinter as tk
+    from ui.cloud_window import CloudWindow
+    from logic.databricks_sync import SyncReport
+    from config.i18n import set_language
+    set_language('EN',persist=False)
+    notices = []
+    monkeypatch.setattr('ui.cloud_window.messagebox.showwarning',lambda title,text,**kwargs:notices.append(text))
+    win = tk.Toplevel(gui_root)
+    view = CloudWindow(win,'Admin','superuser',gui_root,tk.StringVar(gui_root))
+    win.after_cancel(view.poll_id)
+    report = SyncReport(targets=['workspace.dq_control.dq_runs'])
+    view.events.put((True,report))
+    try:
+        view.poll()
+        assert 'Downloaded checks: 0' in view.status.get()
+        assert len(notices) == 1 and 'setup_only=false' in notices[0]
+    finally:
+        view.close()
+
+
+@pytest.mark.gui
+def test_cloud_rule_definition_shows_runnable_local_sql(linked,gui_root):
+    import tkinter as tk
+    from types import SimpleNamespace
+    from ui.rule_details import RuleDetailsWindow
+    window=tk.Toplevel(gui_root)
+    library=SimpleNamespace(root=gui_root,role='superuser')
+    view=RuleDetailsWindow(window,linked[0]['rule_id'],library)
+    def texts(parent):
+        result=[]
+        for child in parent.winfo_children():
+            if isinstance(child,tk.Text): result.append(child.get('1.0','end-1c'))
+            result.extend(texts(child))
+        return result
+    try:
+        gui_root.update()
+        content=texts(view.pages[0])
+        assert 'SELECT id,name,0 AS dq_check FROM customers' in content
+        assert all('{{source}}' not in text for text in content)
+    finally:
+        window.destroy()

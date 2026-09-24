@@ -25,12 +25,15 @@ def run_job(spark, catalog, schema):
     if len(keys)!=len(set(keys)):
         raise ValueError('Duplicate rule keys in dq_rules.')
     failures = []
+    completed = 0
+    attempted = 0
     for row in rules:
         payload = validate_payload(json.loads(row['payload']))
         if revision(payload)!=row['revision'] or payload['rule_key']!=row['rule_key']:
             raise ValueError('Rule checksum mismatch. Publish definitions through DQ Studio.')
         if not payload['active']:
             continue
+        attempted += 1
         run_id = uuid.uuid4().hex
         started = datetime.now(timezone.utc).isoformat()
         run = {'run_id':run_id,'rule_key':row['rule_key'],'revision':row['revision'],'payload':canonical(payload),
@@ -72,6 +75,7 @@ def run_job(spark, catalog, schema):
             spark.createDataFrame([(run_id,int(totals['checked'])-failed,failed,field)], TABLES['dq_results']).write.mode('append').saveAsTable(name(*prefix,'dq_results'))
             spark.sql(f"UPDATE {name(*prefix,'dq_runs')} SET status='completed',completed_at=:ended,source_version=:version,reference_versions=:refs WHERE run_id=:rid",
                       args={'ended':datetime.now(timezone.utc).isoformat(),'version':version,'refs':canonical(versions),'rid':run_id})
+            completed += 1
         except Exception as error:
             message = str(error)[:4000]
             spark.sql(f"UPDATE {name(*prefix,'dq_runs')} SET status='failed',completed_at=:ended,execution_error=:error WHERE run_id=:rid",
@@ -81,3 +85,7 @@ def run_job(spark, catalog, schema):
             spark.sql('DROP TABLE IF EXISTS '+stage)
     if failures:
         raise RuntimeError('\n'.join(failures))
+    if not attempted:
+        raise RuntimeError('No active DQ rules found in '+name(*prefix,'dq_rules')+'. Publish rules from DQ Studio and check the job catalog/schema.')
+    return {'checks_executed': attempted, 'completed': completed, 'failed': len(failures),
+            'runs_table': name(*prefix,'dq_runs'), 'results_table': name(*prefix,'dq_results')}

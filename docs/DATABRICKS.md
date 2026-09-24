@@ -97,14 +97,22 @@ Downloading/importing does not automatically execute rules.
 
 ## Supported data and bounds
 
-| Databricks type | SQLite representation |
-|---|---|
-| Boolean; tiny/small/int/bigint | INTEGER (boolean 0/1) |
-| Float/double | REAL; non-finite values rejected |
-| String/char/varchar | TEXT; empty string remains distinct from NULL |
-| Decimal | Exact TEXT, without floating-point rounding |
-| Date/timestamp | ISO-format TEXT; preserves the connector's datetime/offset |
-| NULL | NULL |
+| Databricks type | Type shown in the app | SQLite storage |
+|---|---|---|
+| Boolean | BOOLEAN | Integer 0/1 |
+| Tiny/small/int/bigint | TINYINT / SMALLINT / INT / BIGINT | Integer; local technical `id` remains INTEGER |
+| Float/double | REAL | Real; non-finite values rejected |
+| String | STRING | Text affinity; leading zeros preserved |
+| Char/varchar | TEXT | Text; empty string remains distinct from NULL |
+| Decimal(p,s) | DECIMAL(p,s) | Exact text, without floating-point rounding |
+| Date/timestamp/timestamp_ntz | DATE / TIMESTAMP / TIMESTAMP_NTZ | Validated ISO text; preserves the connector's datetime/offset |
+| NULL | TEXT fallback | NULL |
+
+STRING and DECIMAL use quoted storage declarations such as `"STRING TEXT"`
+and `"DECIMAL(10,2) TEXT"` to prevent SQLite numeric affinity from changing values.
+The app displays the logical type and restores it on upload. A driver that omits
+decimal precision/scale falls back to exact TEXT storage. SQLite still uses its
+own SQL semantics; these declarations do not implement Databricks arithmetic.
 
 Complex types (array/map/struct/variant), binary and other unsupported types are
 rejected, not silently stringified. Expose a source view that explicitly casts or

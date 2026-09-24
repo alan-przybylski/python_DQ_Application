@@ -11,6 +11,7 @@ from config.i18n import AppError
 from database.connection import get_connection
 from logic.datasets import create_table, table_columns, checked_table, quote
 from logic.table_editor import backup_locked_database
+from logic.dataset_types import INTEGER_BITS, decimal_spec, typed_value, storage_type
 
 MAX_ROWS = 100_000
 MAX_BYTES = 50 * 1024 * 1024
@@ -71,22 +72,22 @@ class Snapshot:
 def local_columns(description, preserve_names=False):
     columns, used = [], set() if preserve_names else {"id"}
     kinds = {
-        "tinyint": "INTEGER",
-        "smallint": "INTEGER",
-        "int": "INTEGER",
+        "tinyint": "TINYINT",
+        "smallint": "SMALLINT",
+        "int": "INT",
         "integer": "INTEGER",
-        "bigint": "INTEGER",
-        "boolean": "INTEGER",
+        "bigint": "BIGINT",
+        "boolean": "BOOLEAN",
         "float": "REAL",
         "double": "REAL",
         "real": "REAL",
-        "string": "TEXT",
+        "string": "STRING",
         "varchar": "TEXT",
         "char": "TEXT",
         "decimal": "TEXT",
-        "date": "TEXT",
-        "timestamp": "TEXT",
-        "timestamp_ntz": "TEXT",
+        "date": "DATE",
+        "timestamp": "TIMESTAMP",
+        "timestamp_ntz": "TIMESTAMP_NTZ",
         "null": "TEXT",
         "void": "TEXT",
     }
@@ -112,10 +113,21 @@ def local_columns(description, preserve_names=False):
         while name.casefold() in used:
             name, suffix = f"{base}_{suffix}", suffix + 1
         used.add(name.casefold())
+        kind = kinds[base_type]
+        if base_type == 'decimal':
+            if '(' in source_type:
+                kind = source_type.upper().replace(' ', '')
+            elif len(field) > 5 and field[4] is not None and field[5] is not None:
+                kind = f'DECIMAL({field[4]},{field[5]})'
+            # Drivers without precision/scale retain the legacy exact-text fallback.
+            if kind != 'TEXT' and not decimal_spec(kind):
+                raise AppError('Unsupported dataset type: {kind}',kind=kind)
+        if preserve_names and name.lower() == 'id' and kind in INTEGER_BITS:
+            kind = 'INTEGER'  # SQLite's rowid primary key requires this spelling.
         columns.append(
             {
                 "name": name,
-                "type": kinds[base_type],
+                "type": kind,
                 "required": False,
                 "source": original,
                 "source_type": source_type,
@@ -130,15 +142,17 @@ def local_value(value, column):
     if value is None:
         return None
     kind = column["type"]
+    if kind in ('DATE','TIMESTAMP','TIMESTAMP_NTZ','BOOLEAN') or decimal_spec(kind):
+        return typed_value(value,kind)
     if (
-        kind == "INTEGER"
+        kind in INTEGER_BITS
         and isinstance(value, (int, bool))
-        and -(2**63) <= value < 2**63
+        and -(2**(INTEGER_BITS[kind]-1)) <= value < 2**(INTEGER_BITS[kind]-1)
     ):
         return int(value)
     if kind == "REAL" and isinstance(value, (int, float)) and math.isfinite(value):
         return float(value)
-    if kind == "TEXT":
+    if kind in ("TEXT", "STRING"):
         if isinstance(value, str):
             return value
         if isinstance(value, Decimal) and value.is_finite():
@@ -300,7 +314,7 @@ def save_named_snapshot(snapshot,table,username,replace=False):
                 backup=backup_locked_database(c,'before_databricks_refresh')
                 c.execute('DELETE FROM '+quote(table))
             else:
-                fields=[quote(col['name'])+' '+col['type']+(' PRIMARY KEY' if i==key else '') for i,col in enumerate(snapshot.columns)]
+                fields=[quote(col['name'])+' '+storage_type(col['type'])+(' PRIMARY KEY' if i==key else '') for i,col in enumerate(snapshot.columns)]
                 c.execute('CREATE TABLE '+quote(table)+' ('+','.join(fields)+')')
             c.executemany('INSERT INTO '+quote(table)+' ('+','.join(map(quote,names))+') VALUES ('+','.join('?' for _ in names)+')',snapshot.rows)
             c.execute('INSERT INTO data_load_log(table_name,file_name,row_count,loaded_by) VALUES(?,?,?,?)',(table,snapshot.source.reference,len(snapshot.rows),username))

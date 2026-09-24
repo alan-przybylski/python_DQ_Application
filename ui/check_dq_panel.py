@@ -129,6 +129,7 @@ class CheckDqPanel:
         self.status.grid(row=5, column=0, sticky="ew", pady=(4, 0))
         self.status.bind("<Button-1>", self.show_execution_errors)
         self.refresh_report()
+        self.root.bind('<<DQResultsImported>>',lambda event:self.refresh_report(),add='+')
 
     def go_back(self):
         self.root.destroy()
@@ -167,7 +168,8 @@ class CheckDqPanel:
             table = self.report_table.get()
             self.runs = runs_for_table(table) if table else []
             self.run_selector.configure(
-                values=[f"#{run['id']} / {run['started_at']}" for run in self.runs]
+                values=[f"#{run['id']} / {run['started_at']} / {tr(run['status'])}"
+                        + (f" / {run['rule_description']}" if run.get('rule_description') else '') for run in self.runs]
             )
             index = next(
                 (
@@ -209,6 +211,7 @@ class CheckDqPanel:
             self.status.configure(
                 text=f"#{self.current['id']} · {tr(self.current['status'])} · {self.current['completed_at']} · {self.current['username']}"
                 + (f" · Databricks · Delta v{self.current['remote']['source_version']}" if self.current.get('remote') else '')
+                + (f" · run_id: {self.current['remote']['remote_run_id']}" if self.current.get('remote') else '')
                 + (' · '+', '.join(f'{alias}: v{version}' for alias,version in json.loads(self.current['remote'].get('reference_versions') or '{}').items()) if self.current.get('remote') and self.current['remote'].get('reference_versions') not in (None,'{}') else '')
                 + (
                     f" · {tr('Execution errors: {details}', details=len(self.current['execution_errors']))}"

@@ -66,11 +66,12 @@ def evaluate(connection, sql, tables):
 
 
 def validate_rule(sql, table):
+    from logic.sql_source import bind_source
     connection = get_connection()
     try:
         checked_table(connection, table)
         connection.execute("PRAGMA query_only=ON")
-        evaluate(connection, sql, list_tables(connection))
+        evaluate(connection, bind_source(sql,table), list_tables(connection))
     except sqlite3.Error as error:
         raise AppError(
             "Rule SQL must be read-only and may access only dataset tables."
@@ -203,7 +204,13 @@ def runs_for_table(table):
     try:
         connection.row_factory = dict_row_factory
         return connection.execute(
-            "SELECT * FROM dq_runs WHERE table_name=? ORDER BY id DESC", (table,)
+            """SELECT r.*,
+            (SELECT json_extract(v.payload,'$.description') FROM dq_remote_receipts x
+             JOIN dq_remote_versions v ON v.revision=x.revision
+             JOIN dq_remote_links l ON l.id=v.link_id AND l.endpoint=x.endpoint
+             JOIN dq_rules q ON q.id=l.rule_id AND q.rule_key=x.rule_key
+             WHERE x.local_run_id=r.id LIMIT 1) AS rule_description
+            FROM dq_runs r WHERE r.table_name=? ORDER BY r.started_at DESC,r.id DESC""", (table,)
         ).fetchall()
     finally:
         connection.close()

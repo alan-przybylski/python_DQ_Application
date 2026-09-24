@@ -12,6 +12,7 @@ import tempfile
 
 from config.i18n import AppError, tr
 from database.connection import get_connection
+from logic.dataset_types import TYPES, INTEGER_BITS, supported, storage_type, logical_type, typed_value, decimal_spec
 
 INTERNAL_TABLES = frozenset(
     {
@@ -30,7 +31,6 @@ INTERNAL_TABLES = frozenset(
         "dq_references",
     }
 )
-TYPES = ("TEXT", "INTEGER", "REAL")
 
 
 def quote(name):
@@ -77,7 +77,7 @@ def table_columns(table, connection=None):
         return [
             {
                 "name": row[1],
-                "type": row[2].upper(),
+                "type": logical_type(row[2]),
                 "required": bool(row[3])
                 or bool(row[5] and row[2].upper() != "INTEGER"),
                 "default": row[4],
@@ -157,10 +157,10 @@ def validate_definition(table, columns):
         raise AppError("Column names must be unique.")
     for column in columns:
         identifier(column["name"])
-        if column["type"] not in TYPES:
-            raise AppError("Supported types: TEXT, INTEGER, REAL.")
+        if not supported(column["type"]):
+            raise AppError("Unsupported dataset type: {kind}", kind=column['type'])
         if column["name"].casefold() == "id" and (
-            column["name"] != "id" or column["type"] == "REAL"
+            column["name"] != "id" or column["type"] not in ('INTEGER','TEXT')
         ):
             raise AppError("The id column must be INTEGER or TEXT.")
 
@@ -175,7 +175,7 @@ def create_table(connection, table, columns):
     if not any(column["name"] == "id" for column in columns):
         definitions.append('"id" INTEGER PRIMARY KEY AUTOINCREMENT')
     for column in columns:
-        definition = f"{quote(column['name'])} {column['type']}"
+        definition = f"{quote(column['name'])} {storage_type(column['type'])}"
         if column["name"] == "id":
             definition += " PRIMARY KEY" + (
                 " AUTOINCREMENT" if column["type"] == "INTEGER" else " NOT NULL"
@@ -202,11 +202,12 @@ def converted(value, column):
             raise AppError("A value is required.")
         return None
     kind = column["type"]
-    if kind in {"INTEGER", "INT", "BIGINT"}:
+    if kind in INTEGER_BITS:
         if not re.fullmatch(r"[+-]?\d+", value.strip()):
             raise AppError("Expected an integer.")
         number = int(value)
-        if not -(2**63) <= number < 2**63:
+        bits = INTEGER_BITS[kind]
+        if not -(2**(bits-1)) <= number < 2**(bits-1):
             raise AppError("Expected an integer.")
         return number
     if kind in {"REAL", "FLOAT", "DOUBLE"}:
@@ -217,6 +218,8 @@ def converted(value, column):
         except ValueError:
             pass
         raise AppError("Expected a finite number using a decimal point.")
+    if kind in ('DATE','TIMESTAMP','TIMESTAMP_NTZ','BOOLEAN') or decimal_spec(kind):
+        return typed_value(value, kind)
     return value
 
 

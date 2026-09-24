@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass, field
 import json
 import uuid
 
@@ -14,6 +15,37 @@ from logic.tickets import sync_ticket
 
 MAX_RUNS = 10000
 MAX_ERRORS = 100000
+
+
+@dataclass
+class SyncReport:
+    imported: int = 0
+    existing: int = 0
+    available: int = 0
+    failed_runs: int = 0
+    latest: str = ''
+    targets: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
+    cancelled: bool = False
+
+    def message(self):
+        from config.i18n import tr
+        lines = [tr('Downloaded checks: {new}. Already imported: {existing}. Remote checks found: {available}.',
+                    new=self.imported, existing=self.existing, available=self.available)]
+        if self.failed_runs:
+            lines.append(tr('Imported execution failures: {count}. Open run history for details.', count=self.failed_runs))
+        if self.latest:
+            lines.append(tr('Latest remote check: {date}', date=self.latest))
+        if not self.targets:
+            lines.append(tr('No published rules are linked. Send rules to Databricks first.'))
+        else:
+            lines.append(tr('Result locations: {targets}', targets=', '.join(self.targets)))
+        if not self.imported and not self.errors and self.targets:
+            lines.append(tr('No new checks downloaded. If daily runs are missing, check setup_only=false and the catalog/schema in the scheduled job.'))
+        if self.cancelled:
+            lines.append(tr('Download cancelled. Completed imports were retained.'))
+        lines.extend(self.errors)
+        return '\n'.join(lines)
 
 
 def endpoint(source, catalog, schema):
@@ -99,7 +131,9 @@ def definition(link_id):
         if link.get('plain_sql'):
             from integrations.plain_sql import compile_sql
             from logic.datasets import list_tables
-            sql,dependencies=compile_sql(rule['sql_query'],link['source_catalog'],link['source_schema'],list_tables())
+            from logic.cloud_bindings import table_bindings
+            bindings=table_bindings(c,link['profile'],json.loads(link['endpoint'])[0],link['source_catalog'],link['source_schema'])
+            sql,dependencies=compile_sql(rule['sql_query'],link['source_catalog'],link['source_schema'],list_tables(),bindings)
             if rule['target_table'] not in dependencies:
                 raise ValueError('The rule must read its selected table.')
             dependencies.pop(rule['target_table'])
@@ -263,6 +297,8 @@ def import_run(link, run, result, errors, actor):
         if len(result)!=1:
             raise ValueError('Run summary is incomplete.')
         result = result[0]
+        if result['run_id'] != run['run_id'] or any(e['run_id'] != run['run_id'] for e in errors):
+            raise ValueError('Result records belong to another remote run.')
         if any(type(result[k]) is not int or result[k]<0 for k in ('passed','failed')) or len(errors)!=result['failed']:
             raise ValueError('Error rows do not match the complete run summary.')
         if any(e['field_name']!=result['field_name'] or e['record_id'] is None or str(e['record_id'])=='' for e in errors):
@@ -304,7 +340,7 @@ def import_run(link, run, result, errors, actor):
         c.close()
 
 
-def synchronize(actor, auto_only=False, cancel=None, connect=connect_source):
+def synchronize(actor, auto_only=False, cancel=None, connect=connect_source, detailed=False):
     with ExitStack() as stack:
         connections={}
         @contextmanager
@@ -313,41 +349,65 @@ def synchronize(actor, auto_only=False, cancel=None, connect=connect_source):
             if key not in connections:
                 connections[key]=stack.enter_context(connect(source))
             yield connections[key]
-        return _synchronize(actor,auto_only,cancel,cached)
+        report = _synchronize(actor,auto_only,cancel,cached)
+        if detailed:
+            return report
+        if report.errors:
+            raise ValueError(report.message())
+        return report.imported
 
 
 def _synchronize(actor, auto_only=False, cancel=None, connect=connect_source):
-    imported = 0
+    report = SyncReport()
     for link in mappings():
         if link['execution_mode']!='databricks' or (auto_only and not link['auto_sync']):
             continue
+        target = name(link['control_catalog'],link['control_schema'],'dq_runs')
+        if target not in report.targets:
+            report.targets.append(target)
+        link_errors = []
         try:
             if cancel and cancel.is_set():
-                return imported
+                report.cancelled = True
+                return report
             with connect(source_for(link)) as remote, remote.cursor() as cursor:
                 prefix = (link['control_catalog'],link['control_schema'])
                 runs = rows(cursor,f"SELECT * FROM {name(*prefix,'dq_runs')} WHERE rule_key=? AND status IN ('completed','failed') ORDER BY started_at,run_id",[link['rule_key']])
+                report.available += len(runs)
                 c = get_connection()
                 seen = {r[0] for r in c.execute('SELECT remote_run_id FROM dq_remote_receipts WHERE endpoint=?',(link['endpoint'],))}
                 c.close()
                 for run in runs:
                     if cancel and cancel.is_set():
-                        return imported
+                        report.cancelled = True
+                        return report
+                    if not report.latest or datetime.fromisoformat(run['started_at']) > datetime.fromisoformat(report.latest):
+                        report.latest = run['started_at']
                     if run['run_id'] in seen:
+                        report.existing += 1
                         continue
-                    result = rows(cursor,f"SELECT * FROM {name(*prefix,'dq_results')} WHERE run_id=?",[run['run_id']],2) if run['status']=='completed' else []
-                    errors = rows(cursor,f"SELECT * FROM {name(*prefix,'dq_errors')} WHERE run_id=?",[run['run_id']],MAX_ERRORS) if run['status']=='completed' else []
-                    if cancel and cancel.is_set():
-                        return imported
-                    imported += import_run(link,run,result,errors,actor)
+                    try:
+                        result = rows(cursor,f"SELECT * FROM {name(*prefix,'dq_results')} WHERE run_id=?",[run['run_id']],2) if run['status']=='completed' else []
+                        errors = rows(cursor,f"SELECT * FROM {name(*prefix,'dq_errors')} WHERE run_id=?",[run['run_id']],MAX_ERRORS) if run['status']=='completed' else []
+                        if cancel and cancel.is_set():
+                            report.cancelled = True
+                            return report
+                        added = import_run(link,run,result,errors,actor)
+                        report.imported += int(added)
+                        report.existing += int(not added)
+                        report.failed_runs += int(added and run['status']=='failed')
+                        seen.add(run['run_id'])
+                    except Exception as error:
+                        link_errors.append(f"Rule #{link['rule_id']} / run {run['run_id']}: {error}")
             c = get_connection()
             with c:
-                c.execute("UPDATE dq_remote_links SET last_sync=datetime('now','localtime'),last_error=NULL WHERE id=?",(link['id'],))
+                c.execute("UPDATE dq_remote_links SET last_sync=datetime('now','localtime'),last_error=? WHERE id=?",('\n'.join(link_errors) or None,link['id']))
             c.close()
         except Exception as error:
             c = get_connection()
             with c:
                 c.execute('UPDATE dq_remote_links SET last_error=? WHERE id=?',(str(error),link['id']))
             c.close()
-            raise
-    return imported
+            link_errors.append(f"Rule #{link['rule_id']} / {target}: {error}")
+        report.errors.extend(link_errors)
+    return report

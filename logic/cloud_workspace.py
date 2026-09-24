@@ -1,6 +1,7 @@
 """Same-name table upload and ordinary SQL publication using one saved profile."""
 import uuid
 from contextlib import contextmanager
+from config.i18n import tr
 from database.connection import get_connection,dict_row_factory
 from logic.accounts import require_superuser
 from logic.datasets import checked_table,table_columns,quote,list_tables
@@ -9,6 +10,8 @@ from logic.databricks_import import Source,connect_source
 from logic.databricks_sync import endpoint,definition,setup_remote,compare,publish,rows
 from integrations.databricks_contract import name,revision
 from integrations.plain_sql import compile_sql
+from logic.dataset_types import decimal_spec, remote_value
+from logic.cloud_bindings import table_bindings
 
 
 def destination(profile,table):
@@ -20,7 +23,47 @@ def destination(profile,table):
     return source
 
 
-def upload_table(actor,profile,table,replace=False,cancel=None,connect=connect_source):
+class UploadTypeError(ValueError):
+    def __init__(self, issues, invalid_columns):
+        self.invalid_columns = tuple(sorted(invalid_columns))
+        self.issues = issues
+        details='\n'.join(tr('Record {record}, column {column} ({kind}): {value}',**issue) for issue in issues)
+        super().__init__(tr('Upload blocked by incompatible values. No remote data was changed.\n{details}\nTo preserve these DQ errors, upload the affected columns as STRING: {columns}.',
+                            details=details,columns=', '.join(self.invalid_columns)))
+
+
+def prepare_upload(columns,data,string_columns=()):
+    selected=set(string_columns)
+    available={c['name'] for c in columns}
+    if selected-available or any(c['name'] in selected and (c.get('pk') or c['name'].casefold()=='id') for c in columns):
+        raise ValueError('Choose existing non-key columns for STRING upload.')
+    remote_columns=[{**c,'type':'STRING' if c['name'] in selected else c['type']} for c in columns]
+    key=next((i for i,c in enumerate(columns) if c['name']=='id'),None)
+    converted=[]
+    issues=[]
+    invalid=set()
+    for position,row in enumerate(data,1):
+        values=[]
+        for value,col in zip(row,remote_columns):
+            try:
+                if col['name'] in selected:
+                    if isinstance(value,bytes):
+                        raise ValueError('Binary data cannot be converted to text automatically.')
+                    values.append(None if value is None else str(value))
+                else:
+                    values.append(remote_value(value,col['type']))
+            except ValueError:
+                invalid.add(col['name'])
+                if len(issues)<20:
+                    issues.append(dict(record=row[key] if key is not None else position,
+                                       column=col['name'],kind=col['type'],value=repr(value)[:100]))
+        converted.append(tuple(values))
+    if invalid:
+        raise UploadTypeError(issues,invalid)
+    return remote_columns,converted
+
+
+def upload_table(actor,profile,table,replace=False,cancel=None,connect=connect_source,*,string_columns=()):
     c=get_connection()
     try:
         c.execute('BEGIN')
@@ -34,11 +77,16 @@ def upload_table(actor,profile,table,replace=False,cancel=None,connect=connect_s
     source=destination(profile,table)
     def check():
         if cancel and cancel.is_set(): raise ValueError('Upload cancelled; destination was not replaced.')
-    types={'INTEGER':'BIGINT','REAL':'DOUBLE','TEXT':'STRING','BLOB':'BINARY'}
+    types={'INTEGER':'BIGINT','REAL':'DOUBLE','TEXT':'STRING','BLOB':'BINARY',
+           'STRING':'STRING','BIGINT':'BIGINT','INT':'INT','SMALLINT':'SMALLINT',
+           'TINYINT':'TINYINT','BOOLEAN':'BOOLEAN','DATE':'DATE',
+           'TIMESTAMP':'TIMESTAMP','TIMESTAMP_NTZ':'TIMESTAMP_NTZ'}
+    columns,data=prepare_upload(columns,data,string_columns)
     fields=[]
     for col in columns:
-        if col['type'] not in types: raise ValueError('Unsupported local column type: '+col['type'])
-        fields.append(name(col['name'])+' '+types[col['type']])
+        kind=col['type']
+        if kind not in types and not decimal_spec(kind): raise ValueError('Unsupported local column type: '+kind)
+        fields.append(name(col['name'])+' '+types.get(kind,kind))
     stage=name(source.catalog,source.schema,'__dq_upload_'+uuid.uuid4().hex)
     created=False
     check()
@@ -72,9 +120,11 @@ def send_rule(actor,profile,rule_id,connect=connect_source):
         rule=c.execute('SELECT * FROM dq_rules WHERE id=?',(rule_id,)).fetchone()
         if not rule: raise ValueError('Select a rule.')
         source=destination(profile,rule['target_table'])
-        sql,dependencies=compile_sql(rule['sql_query'],source.catalog,source.schema,list_tables())
+        bindings=table_bindings(c,profile,source.hostname,source.catalog,source.schema)
+        sql,dependencies=compile_sql(rule['sql_query'],source.catalog,source.schema,list_tables(),bindings)
         if rule['target_table'] not in dependencies:
             raise ValueError('The SQL must read the rule target table.')
+        source=Source(source.hostname,source.http_path,*dependencies[rule['target_table']])
     finally: c.close()
     with connect(source) as remote:
         @contextmanager

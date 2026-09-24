@@ -316,7 +316,7 @@ class DataQualityWindow:
             form,
             text=tr(
                 "Rule output must contain id, the tested field as the second column, and dq_check (0 = PASS, 1 = FAIL)."
-            ),
+            ) + '\n' + tr('Use the local table name in FROM. Optional {{{{SOURCE}}}} means the selected table.'),
             wraplength=780,
             justify="left",
             font=("Segoe UI", 9),

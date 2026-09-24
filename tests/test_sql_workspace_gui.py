@@ -36,6 +36,15 @@ def test_preview_and_rule_handoff(sqlite_database, monkeypatch, language,screen_
             time.sleep(.02)
         assert not workspace.running
         assert len(workspace.results["columns"]) == 4
+        workspace.editor.delete('1.0','end')
+        workspace.editor.insert('1.0','SELECT id,name,0 AS dq_check FROM {{SOURCE}}')
+        workspace.run()
+        deadline=time.monotonic()+5
+        while workspace.running and time.monotonic()<deadline:
+            root.update()
+            time.sleep(.02)
+        assert not workspace.running
+        assert len(workspace.results['columns']) == 3
         captured = {}
         monkeypatch.setattr(DataQualityWindow, "rule_form", lambda self, **kw: captured.update(kw))
         workspace.editor.delete("1.0", "end")

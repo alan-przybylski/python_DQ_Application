@@ -26,7 +26,7 @@ def parsed(sql,dialect):
     return tree,physical
 
 
-def compile_sql(sql,catalog,schema,allowed):
+def compile_sql(sql,catalog,schema,allowed,bindings=None):
     tree,tables=parsed(sql,'sqlite')
     available={name.casefold():name for name in allowed}
     dependencies={}
@@ -34,10 +34,15 @@ def compile_sql(sql,catalog,schema,allowed):
         if table.db or table.catalog or table.name.casefold() not in available:
             raise ValueError('Unknown local table: '+table.sql())
         local=available[table.name.casefold()]
-        dependencies[local]=[catalog,schema,local]
-        table.set('this',exp.to_identifier(local,quoted=True))
-        table.set('db',exp.to_identifier(schema,quoted=True))
-        table.set('catalog',exp.to_identifier(catalog,quoted=True))
+        destination=(bindings or {}).get(local,[catalog,schema,local])
+        dependencies[local]=destination
+        # Preserve qualifiers such as local_products.sku after the remote table
+        # name changes. Explicit aliases and CTE scopes remain untouched.
+        if destination[2] != local and not table.alias:
+            table.set('alias',exp.TableAlias(this=exp.to_identifier(local,quoted=True)))
+        table.set('this',exp.to_identifier(destination[2],quoted=True))
+        table.set('db',exp.to_identifier(destination[1],quoted=True))
+        table.set('catalog',exp.to_identifier(destination[0],quoted=True))
     rendered=tree.sql(dialect='databricks',unsupported_level=ErrorLevel.RAISE)
     validate_sql(rendered,dependencies)
     return rendered,dependencies

@@ -6,7 +6,7 @@ from tkinter import ttk
 
 from config.i18n import tr
 from logic.tickets import list_tickets, ticket_details, update_ticket, active_users, STATUS_LABELS
-from ui.common import header, footer, table_view, error_box
+from ui.common import header, footer, table_view, error_box, environment_filter
 from ui.rule_details import readonly_text
 from ui.utils import place_window
 
@@ -19,6 +19,8 @@ class TicketsWindow:
         place_window(root)
         root.title('DQ Studio / ' + tr('DQ tickets'))
         header(root, 'DQ tickets', username)
+        if environment is None:
+            self.environment_picker = environment_filter(root, self.change_environment)
         if environment:
             tk.Label(root, text='Databricks' if environment == 'databricks' else 'Local / SQLite').pack(anchor='w', padx=20)
         footer(root, self.go_back, time_var)
@@ -34,7 +36,7 @@ class TicketsWindow:
         tk.Button(bar, text=tr('Refresh'), command=self.refresh).pack(side='right')
         self.summary = tk.StringVar()
         tk.Label(root, textvariable=self.summary, anchor='w').pack(fill='x', padx=24)
-        frame, self.tree = table_view(root, [('id', 'Ticket', 65), ('title', 'Description', 235),
+        frame, self.tree = table_view(root, [('id', 'Ticket', 65), ('environment', 'Environment', 100), ('title', 'Description', 235),
             ('table', 'Table', 125), ('severity', 'Severity', 85), ('status', 'Status', 120),
             ('assignee', 'Assigned to', 130), ('due', 'Due date', 145), ('failed', 'Failed', 70)], 12)
         frame.pack(fill='both', expand=True, padx=24, pady=12)
@@ -49,12 +51,17 @@ class TicketsWindow:
         self.root.destroy()
         self.dashboard_root.deiconify()
 
+    def change_environment(self, environment):
+        self.environment = environment
+        self.refresh()
+
     def refresh(self):
         try:
             self.tree.delete(*self.tree.get_children())
             rows = list_tickets()
             from logic.workspaces import run_ids
             allowed = run_ids(self.environment, self.profile)
+            cloud_runs = run_ids('databricks')
             if allowed is not None:
                 rows = [row for row in rows if row['failure_run_id'] in allowed]
             for row in rows:
@@ -65,7 +72,8 @@ class TicketsWindow:
                     continue
                 if scope == tr('Overdue') and not row['overdue']:
                     continue
-                self.tree.insert('', 'end', iid=str(row['id']), values=(row['id'], row['title'], row['table_name'],
+                location = 'Databricks' if row['failure_run_id'] in cloud_runs else 'Local'
+                self.tree.insert('', 'end', iid=str(row['id']), values=(row['id'], location, row['title'], row['table_name'],
                     row['severity'].title(), tr(STATUS_LABELS[row['status']]), row['assignee'], row['due_at'][:16], row['failed_count']),
                     tags=('overdue',) if row['overdue'] else ())
             self.summary.set(tr('{count} tickets · {overdue} overdue', count=len(self.tree.get_children()),

@@ -39,6 +39,18 @@ def footer(root, back, clock=None):
     return frame
 
 
+def environment_filter(root, changed):
+    frame = tk.Frame(root)
+    frame.pack(fill='x', padx=20, pady=6)
+    tk.Label(frame, text=tr('Environment')).pack(side='left', padx=(0, 8))
+    values = {tr('All environments'): None, 'Local / SQLite': 'local', 'Databricks': 'databricks'}
+    choice = tk.StringVar(value=tr('All environments'))
+    picker = ttk.Combobox(frame, textvariable=choice, values=list(values), state='readonly', width=24)
+    picker.pack(side='left')
+    picker.bind('<<ComboboxSelected>>', lambda event: changed(values[choice.get()]))
+    return picker
+
+
 def table_view(parent, columns, height=5):
     frame = tk.Frame(parent)
     vertical = ttk.Scrollbar(frame, orient="vertical")

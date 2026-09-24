@@ -15,7 +15,7 @@ from logic.dq_engine import (
     export_errors,
 )
 from logic.dq_report import draw_chart
-from ui.common import header, footer, table_view, error_box, save_csv_dialog
+from ui.common import header, footer, table_view, error_box, save_csv_dialog, environment_filter
 from ui.theme import SURFACE, ACCENT, MUTED
 from ui.utils import place_window
 
@@ -32,6 +32,8 @@ class CheckDqPanel:
         place_window(root)
         root.title("DQ Studio / " + tr("Quality report"))
         header(root, "Quality report", username)
+        if environment is None:
+            self.environment_picker = environment_filter(root, self.change_environment)
         if environment:
             tk.Label(root, text=('Databricks' if environment == 'databricks' else 'Local / SQLite') + (f' / {profile}' if profile else '')).pack(anchor='w', padx=20)
         footer(root, self.go_back, time_var)
@@ -54,6 +56,7 @@ class CheckDqPanel:
             width=19,
         )
         selector.pack(side="left", padx=(0, 10))
+        self.table_selector = selector
         selector.bind("<<ComboboxSelected>>", lambda event: self.refresh_report())
         self.run_choice = tk.StringVar()
         self.run_selector = ttk.Combobox(
@@ -141,6 +144,14 @@ class CheckDqPanel:
         self.root.destroy()
         self.data_quality_root.deiconify()
 
+    def change_environment(self, environment):
+        self.environment = environment
+        tables = self.get_tables_to_dq_check()
+        self.table_selector.configure(values=tables)
+        if self.report_table.get() not in tables:
+            self.report_table.set(tables[0] if tables else '')
+        self.refresh_report()
+
     def get_tables_to_dq_check(self):
         from logic.workspaces import report_tables
         return report_tables(self.environment, self.profile)
@@ -181,7 +192,7 @@ class CheckDqPanel:
             if allowed_runs is not None:
                 self.runs = [run for run in self.runs if run['id'] in allowed_runs]
             self.run_selector.configure(
-                values=[f"#{run['id']} / {run['started_at']} / {tr(run['status'])}"
+                values=[f"#{run['id']} / {'Databricks' if run['mode'] == 'databricks' else 'Local'} / {run['started_at']} / {tr(run['status'])}"
                         + (f" / {run['rule_description']}" if run.get('rule_description') else '') for run in self.runs]
             )
             index = next(
@@ -223,6 +234,7 @@ class CheckDqPanel:
             )
             self.status.configure(
                 text=f"#{self.current['id']} · {tr(self.current['status'])} · {self.current['completed_at']} · {self.current['username']}"
+                + (' · Local / SQLite' if self.current['mode'] != 'databricks' else '')
                 + (f" · Databricks · Delta v{self.current['remote']['source_version']}" if self.current.get('remote') else '')
                 + (f" · run_id: {self.current['remote']['remote_run_id']}" if self.current.get('remote') else '')
                 + (' · '+', '.join(f'{alias}: v{version}' for alias,version in json.loads(self.current['remote'].get('reference_versions') or '{}').items()) if self.current.get('remote') and self.current['remote'].get('reference_versions') not in (None,'{}') else '')

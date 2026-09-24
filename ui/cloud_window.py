@@ -71,8 +71,8 @@ class CloudWindow:
         rule_actions.pack(fill='x')
         button(rule_actions,'Send rule to Databricks',self.send_rule)
         button(rule_actions,'Run selected in Databricks',self.run_selected)
-        button(rule_actions,'Run all in Databricks',lambda:self.start(lambda:run_remote_checks(self.username,cancel=self.cancel)))
-        button(rule_actions,'Download all results',lambda:self.start(lambda:synchronize(self.username,cancel=self.cancel,detailed=True)))
+        button(rule_actions,'Run all in Databricks',self.run_all)
+        button(rule_actions,'Download all results',self.download_results)
         self.status=tk.StringVar(root,value='')
         tk.Label(body,textvariable=self.status,wraplength=940,justify='left').pack(fill='x',pady=12)
         self.inputs=[profile,table,picker,self.replace_box]
@@ -104,7 +104,19 @@ class CloudWindow:
         if not link:
             self.status.set(tr('Send this rule to Databricks first.'))
             return
-        self.start(lambda:run_remote_checks(self.username,link['id'],cancel=self.cancel))
+        profile=self.profile.get()
+        if link['profile'] != profile:
+            self.status.set(tr('Choose the profile linked to this rule.'))
+            return
+        self.start(lambda:run_remote_checks(self.username,link['id'],cancel=self.cancel,profile=profile))
+
+    def run_all(self):
+        profile=self.profile.get()
+        self.start(lambda:run_remote_checks(self.username,cancel=self.cancel,profile=profile))
+
+    def download_results(self):
+        profile=self.profile.get()
+        self.start(lambda:synchronize(self.username,cancel=self.cancel,detailed=True,profile=profile))
 
     def download_table(self):
         from ui.databricks_window import DatabricksWindow

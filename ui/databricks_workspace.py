@@ -15,7 +15,7 @@ from ui.utils import place_window
 
 
 class DatabricksWorkspace:
-    def __init__(self, root, username, role, parent, time_var):
+    def __init__(self, root, username, role, parent, time_var, initial_profile=None, initial_view='sql'):
         self.root, self.username, self.role, self.parent, self.time_var = root, username, role, parent, time_var
         self.cancel, self.messages = threading.Event(), queue.Queue()
         self.running, self.closed = False, False
@@ -28,7 +28,7 @@ class DatabricksWorkspace:
         bar = tk.Frame(root)
         bar.pack(fill='x', padx=20, pady=8)
         profiles = load_profiles()
-        self.profile = tk.StringVar(value=profiles['selected'])
+        self.profile = tk.StringVar(value=profiles['selected'] if initial_profile is None else initial_profile)
         self.catalog, self.schema = tk.StringVar(), tk.StringVar()
         tk.Label(bar, text=tr('Connection profile')).pack(side='left')
         picker = ttk.Combobox(bar, textvariable=self.profile, values=list(profiles['profiles']), state='readonly', width=22)
@@ -73,10 +73,19 @@ class DatabricksWorkspace:
         tk.Button(controls, text=tr('Run selected in Databricks'), command=self.run_rule).pack(side='left')
         tk.Button(controls, text=tr('Download all results'), command=self.download).pack(side='left', padx=6)
         tk.Button(controls, text=tr('Quality report'), command=self.report).pack(side='left')
+        self.export_button = tk.Button(controls, text=tr('Export preview to CSV (up to 500 rows)'), command=self.export_preview, state='disabled')
+        self.export_button.pack(side='left', padx=6)
+        self.preview_result = None
         self.status = tk.StringVar()
         tk.Label(root, textvariable=self.status, wraplength=1100, anchor='w', justify='left').pack(fill='x', padx=20, pady=8)
         self.profile_changed()
         self.poll_id = root.after(100, self.poll)
+        if initial_view == 'tables' and self.profile.get():
+            self.browse()
+        elif initial_view == 'rules':
+            self.rules.focus_set()
+        else:
+            self.editor.focus_set()
 
     def profile_changed(self, event=None):
         settings = load_profiles()['profiles'].get(self.profile.get(), {})
@@ -84,6 +93,9 @@ class DatabricksWorkspace:
         self.schema.set(settings.get('schema', ''))
         self.tables.delete(*self.tables.get_children())
         self.nodes.clear()
+        self.preview_result = None
+        self.export_button.configure(state='disabled')
+        self.results.delete(*self.results.get_children())
         self.refresh_rules()
 
     def refresh_rules(self):
@@ -172,6 +184,8 @@ class DatabricksWorkspace:
         return 'break'
 
     def show_preview(self, preview):
+        self.preview_result = preview
+        self.export_button.configure(state='normal')
         self.results.delete(*self.results.get_children())
         keys = [str(i) for i in range(len(preview.columns))]
         self.results.configure(columns=keys)
@@ -225,6 +239,19 @@ class DatabricksWorkspace:
             except Exception as error:
                 error_box(error, dialog)
         tk.Button(dialog, text=tr('Save'), command=save).pack(pady=12)
+
+    def export_preview(self):
+        from ui.common import save_csv_dialog
+        from logic.datasets import write_csv
+        if self.preview_result is None:
+            return
+        path = save_csv_dialog(self.root, 'databricks_preview.csv')
+        if path:
+            try:
+                count = write_csv(path, self.preview_result.columns, self.preview_result.rows)
+                self.status.set(tr('Exported {count} rows.', count=count))
+            except Exception as error:
+                error_box(error, self.root)
 
     def publish(self):
         try:

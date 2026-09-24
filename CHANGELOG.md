@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Replace the dashboard environment switch with separate Local and Databricks
+  menus and nested import/export actions. Keep shared reports, tickets, settings
+  and administrator-only user management on the main menu.
+- Add shared report/ticket environment filters, standalone language/connection
+  settings, an explicit Databricks schedules link and bounded cloud-preview CSV
+  export. Scope legacy transfer-screen execution/downloads to its selected profile.
+
 - Separate Local / SQLite and Databricks workspaces, with environment-filtered
   reports and tickets and explicit data-transfer/snapshot actions.
 - Add a native Databricks SQL editor with remote column browsing, fully qualified

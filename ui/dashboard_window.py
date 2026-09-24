@@ -1,6 +1,5 @@
 import tkinter as tk
 import time
-from tkinter import ttk
 
 from config.i18n import tr
 from logic.accounts import normalize_role
@@ -13,8 +12,22 @@ class DashboardWindow:
     def __init__(self, root, username, role):
         self.root, self.username, self.role = root, username, normalize_role(role)
         root.dq_sign_out = self.logout_user
+        root.dq_refresh_menu = self.render
+        self.time_var = tk.StringVar(master=root)
+        self.sync_status = tk.StringVar(master=root)
+        self.clock_id = None
+        self.render()
+        self.update_time()
+        root.protocol("WM_DELETE_WINDOW", self.exit_program)
+        from ui.databricks_sync_window import startup_sync
+        self.sync_cancel = startup_sync(root, username, self.sync_status)
+
+    def render(self):
+        root, username = self.root, self.username
+        for widget in root.winfo_children():
+            widget.destroy()
         place_window(root)
-        root.title("DQ Studio / " + tr("Workspace"))
+        root.title("DQ Studio / " + tr("Main menu"))
         banner = tk.Frame(root, background=NAVY)
         banner.pack(fill="x")
         tk.Label(
@@ -37,32 +50,27 @@ class DashboardWindow:
             background=NAVY,
             foreground="#B2C4D5",
         ).pack(anchor="w", padx=36, pady=(12, 24))
-        workspace = tk.Frame(root)
-        workspace.pack(fill='x', padx=30, pady=8)
-        tk.Label(workspace, text=tr('Execution location')).pack(side='left', padx=6)
-        self.environment = tk.StringVar(value='Local / SQLite')
-        ttk.Combobox(workspace, textvariable=self.environment, values=['Local / SQLite', 'Databricks'], state='readonly', width=28).pack(side='left')
         actions = tk.Frame(root)
         actions.pack(expand=True, padx=24, pady=16)
         choices = [
-            ("Local · Import CSV", self.load_csv_and_log),
-            ("Rule library", self.open_dq_panel),
-            ("SQL editor", self.open_sql_editor),
+            ("Databricks", lambda: self.open_environment('databricks')),
+            ("Local", lambda: self.open_environment('local')),
             ("Quality report", self.open_quality_report),
             ("DQ tickets", self.open_tickets),
-            ("Data transfers / synchronization", self.open_databricks_sync),
-            ("Local · Export table", self.open_export),
-            ("Local · Import history", self.open_file_history),
+            ("Settings", self.open_settings),
         ]
         if self.role == "superuser":
             choices.append(("Manage users", self.open_admin_panel))
+        self.buttons = {}
         for index, (label, command) in enumerate(choices):
-            tk.Button(
+            button = tk.Button(
                 actions,
                 text=f"{index + 1:02d}   {tr(label)}",
                 command=command,
                 width=32,
-            ).grid(row=index // 2, column=index % 2, sticky='ew', padx=6, pady=4)
+            )
+            button.grid(row=index // 2, column=index % 2, sticky='ew', padx=6, pady=4)
+            self.buttons[label] = button
         bottom = tk.Frame(root)
         bottom.pack(side="bottom", fill="x")
         tk.Button(bottom, text=tr("Exit"), command=self.exit_program).pack(
@@ -71,17 +79,9 @@ class DashboardWindow:
         tk.Button(bottom, text=tr("Sign out"), command=self.logout_user).pack(
             side="left", padx=4
         )
-        self.time_var = tk.StringVar(master=root)
         self.clock_label = tk.Label(bottom, textvariable=self.time_var)
         self.clock_label.pack(side="right", padx=16)
-        self.clock_id = None
-        self.update_time()
-        root.protocol("WM_DELETE_WINDOW", self.exit_program)
-        self.sync_status = tk.StringVar(master=root)
         tk.Label(bottom,textvariable=self.sync_status,wraplength=550).pack(side='left',padx=8)
-        from ui.databricks_sync_window import startup_sync
-
-        self.sync_cancel = startup_sync(root,username,self.sync_status)
 
     def update_time(self):
         self.time_var.set(time.strftime("%H:%M:%S"))
@@ -90,8 +90,9 @@ class DashboardWindow:
     def open_window(self, window_class, **kwargs):
         window = tk.Toplevel(self.root)
         try:
-            window_class(window, self.username, self.role, self.root, self.time_var, **kwargs)
+            view = window_class(window, self.username, self.role, self.root, self.time_var, **kwargs)
             self.root.withdraw()
+            return view
         except Exception as error:
             window.destroy()
             error_box(error, self.root)
@@ -100,6 +101,14 @@ class DashboardWindow:
         from ui.admin_window import AdminWindow
 
         self.open_window(AdminWindow)
+
+    def open_environment(self, environment):
+        from ui.environment_menu import EnvironmentMenu
+        return self.open_window(EnvironmentMenu, environment=environment)
+
+    def open_settings(self):
+        from ui.settings_window import SettingsWindow
+        return self.open_window(SettingsWindow)
 
     def exit_program(self):
         self.sync_cancel.set()
@@ -118,16 +127,11 @@ class DashboardWindow:
         self.open_window(ExportWindow)
 
     def open_dq_panel(self):
-        if self.environment.get() == 'Databricks':
-            return self.open_sql_editor()
         from ui.data_quality import DataQualityWindow
 
         self.open_window(DataQualityWindow)
 
     def open_sql_editor(self):
-        if self.environment.get() == 'Databricks':
-            from ui.databricks_workspace import DatabricksWorkspace
-            return self.open_window(DatabricksWorkspace)
         from ui.sql_workspace import SqlWorkspace
 
         self.open_window(SqlWorkspace)
@@ -140,12 +144,12 @@ class DashboardWindow:
     def open_quality_report(self):
         from ui.check_dq_panel import CheckDqPanel
 
-        self.open_window(CheckDqPanel, environment='databricks' if self.environment.get() == 'Databricks' else 'local')
+        return self.open_window(CheckDqPanel)
 
     def open_tickets(self):
         from ui.tickets_window import TicketsWindow
 
-        self.open_window(TicketsWindow, environment='databricks' if self.environment.get() == 'Databricks' else 'local')
+        return self.open_window(TicketsWindow)
 
     def open_databricks_sync(self):
         from ui.databricks_sync_window import DatabricksSyncWindow

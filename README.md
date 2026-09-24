@@ -20,10 +20,25 @@ clean history, separate from the original course project.
 
 ## Local and Databricks workspaces (DEV)
 
-Choose **Local / SQLite** or **Databricks** on the dashboard before opening the
-SQL editor, rules, quality reports or tickets. CSV imports, local exports and
-import history are explicitly marked Local. Transfers and synchronization have
-their own screen; downloading a snapshot is optional.
+After sign-in, the main menu contains **Databricks**, **Local**, **Quality report**,
+**DQ tickets**, **Settings**, and **Manage users** (administrators only).
+The shared reports and tickets show the execution environment and offer an
+All / Local / Databricks filter. Sign out stays in the footer.
+
+**Local** opens a separate menu for tables, SQL, rules, running checks, local
+reports, and import/export. Its import/export submenu contains CSV imports,
+local exports and import history. **Databricks** opens its own menu with an
+explicit connection profile: tables, SQL, rules, runs/schedules, cloud reports
+and transfers. Reports opened from an environment menu are scoped to that
+environment. **Manage schedules in Databricks** opens the selected workspace's
+Jobs page in your browser; scheduling is managed there.
+
+The cloud transfer menu names its destinations explicitly: send a local table,
+create a local snapshot, export the cloud preview to CSV (up to 500 rows), or
+download DQ results. Downloads remain optional for cloud SQL. Settings contains
+language selection and connection-profile creation, selection and deletion,
+independent of importing data. Each submenu provides a return to its parent;
+environment menus also return to the main menu.
 
 In the Databricks editor select a saved connection profile, enter a catalog and
 schema, and click **Browse cloud tables**. The browser shows remote column types,

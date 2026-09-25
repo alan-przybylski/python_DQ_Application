@@ -5,8 +5,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from config.i18n import tr
-from database.connection import get_connection, dict_row_factory
-from integrations.databricks_contract import name, revision
+from integrations.databricks_contract import name
+from logic.cloud_rule_library import list_cloud_rules
 from integrations.plain_sql import native_sql
 from logic import databricks_workspace as cloud
 from logic.databricks_profiles import load_profiles
@@ -15,7 +15,7 @@ from ui.utils import place_window
 
 
 class DatabricksWorkspace:
-    def __init__(self, root, username, role, parent, time_var, initial_profile=None, initial_view='sql'):
+    def __init__(self, root, username, role, parent, time_var, initial_profile=None, initial_view='sql', initial_rule=None):
         self.root, self.username, self.role, self.parent, self.time_var = root, username, role, parent, time_var
         self.cancel, self.messages = threading.Event(), queue.Queue()
         self.running, self.closed = False, False
@@ -80,7 +80,12 @@ class DatabricksWorkspace:
         tk.Label(root, textvariable=self.status, wraplength=1100, anchor='w', justify='left').pack(fill='x', padx=20, pady=8)
         self.profile_changed()
         self.poll_id = root.after(100, self.poll)
-        if initial_view == 'tables' and self.profile.get():
+        if initial_rule is not None:
+            index = next((i for i, rule in enumerate(self.saved) if rule['id'] == initial_rule), None)
+            if index is not None:
+                self.rules.current(index)
+                self.load_rule()
+        elif initial_view == 'tables' and self.profile.get():
             self.browse()
         elif initial_view == 'rules':
             self.rules.focus_set()
@@ -99,19 +104,13 @@ class DatabricksWorkspace:
         self.refresh_rules()
 
     def refresh_rules(self):
-        c = get_connection()
-        c.row_factory = dict_row_factory
-        try:
-            self.saved = c.execute('''SELECT r.*,l.id AS link_id,l.base_revision FROM dq_rules r
-                JOIN dq_remote_links l ON l.rule_id=r.id WHERE r.sql_engine='databricks' AND l.profile=? ORDER BY r.id''', (self.profile.get(),)).fetchall()
-        finally:
-            c.close()
-        from logic.databricks_sync import definition
+        self.saved = list_cloud_rules(self.profile.get())
         labels = []
         for rule in self.saved:
-            _, payload = definition(rule['link_id'])
-            state = tr('Published') if rule['base_revision'] == revision(payload) else tr('Pending publication') if rule['base_revision'] else tr('Draft')
-            labels.append(f"#{rule['id']} · {state} · {tr('Active') if rule['status'] == 'ACTIVE' else tr('Inactive')} · {rule['description']}")
+            legacy = rule['sql_engine'] != 'databricks'
+            state = tr(rule['publication_state'])
+            kind = ' · ' + tr('Linked local rule') if legacy else ''
+            labels.append(f"#{rule['id']} · {state}{kind} · {tr('Active') if rule['display_active'] else tr('Inactive')} · {rule['display_description']}")
         self.rules.configure(values=labels)
         self.rule_choice.set('')
 
@@ -125,7 +124,10 @@ class DatabricksWorkspace:
         if self.editor.get('1.0', 'end-1c').strip() and not messagebox.askyesno(tr('SQL editor'), tr('Replace the current SQL?'), parent=self.root):
             return
         self.editor.delete('1.0', 'end')
-        self.editor.insert('1.0', self.selected_rule()['sql_query'])
+        rule = self.selected_rule()
+        self.editor.insert('1.0', rule['display_sql'])
+        if rule['sql_engine'] != 'databricks':
+            self.status.set(tr('This published rule has a linked local definition. Use Edit rule in Rule library, then publish changes through Data transfers.'))
 
     def start(self, operation, completed):
         if self.running:
@@ -203,6 +205,8 @@ class DatabricksWorkspace:
         try:
             sql, deps = native_sql(self.editor.get('1.0', 'end-1c'))
             existing = self.selected_rule() if edit else None
+            if existing and existing['sql_engine'] != 'databricks':
+                raise ValueError(tr('Use Edit rule in Rule library for this linked definition, then publish through Data transfers.'))
         except Exception as error:
             error_box(error, self.root)
             return
@@ -256,6 +260,8 @@ class DatabricksWorkspace:
     def publish(self):
         try:
             rule = self.selected_rule()
+            if rule['sql_engine'] != 'databricks':
+                raise ValueError(tr('Use Edit rule in Rule library for this linked definition, then publish through Data transfers.'))
             if self.editor.get('1.0', 'end-1c').strip() != rule['sql_query'].strip():
                 raise ValueError(tr('Editor differs from the saved rule. Save a new rule or load the selected rule before publishing.'))
         except Exception as error:
@@ -312,4 +318,6 @@ class DatabricksWorkspace:
         self.cancel.set()
         self.root.after_cancel(self.poll_id)
         self.root.destroy()
+        if hasattr(self.parent, 'dq_refresh_menu'):
+            self.parent.dq_refresh_menu()
         self.parent.deiconify()

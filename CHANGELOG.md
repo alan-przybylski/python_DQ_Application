@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Provide one shared Rule library on the main menu with Local / Databricks and
+  profile filters, separate from SQL editors. Include older linked Databricks
+  publications, display their saved remote SQL, and preserve their rule identities
+  and editing workflow without creating duplicate scheduled checks.
+
 - Replace the dashboard environment switch with separate Local and Databricks
   menus and nested import/export actions. Keep shared reports, tickets, settings
   and administrator-only user management on the main menu.

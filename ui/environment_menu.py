@@ -62,7 +62,7 @@ class EnvironmentMenu:
             return [('Import CSV', self.import_csv), ('Export table', self.export),
                     ('Import history', self.history)]
         return [('Browse tables and columns', lambda: self.editor('tables')),
-                ('SQL editor', self.editor), ('Rule library', self.rules),
+                ('SQL editor', self.editor),
                 ('Runs and schedules' if self.environment == 'databricks' else 'Run checks', self.runs),
                 ('Quality report', self.report),
                 ('Data transfers' if self.environment == 'databricks' else 'Import / export data', self.transfers)]
@@ -98,10 +98,8 @@ class EnvironmentMenu:
         return workspace
 
     def rules(self):
-        if self.environment == 'databricks':
-            return self.editor('rules')
-        from ui.data_quality import DataQualityWindow
-        self.open_window(DataQualityWindow)
+        from ui.rule_library_window import RuleLibraryWindow
+        return self.open_window(RuleLibraryWindow)
 
     def report(self):
         from ui.check_dq_panel import CheckDqPanel

@@ -55,6 +55,7 @@ class DashboardWindow:
         choices = [
             ("Databricks", lambda: self.open_environment('databricks')),
             ("Local", lambda: self.open_environment('local')),
+            ("Rule library", self.open_dq_panel),
             ("Quality report", self.open_quality_report),
             ("DQ tickets", self.open_tickets),
             ("Settings", self.open_settings),
@@ -127,9 +128,8 @@ class DashboardWindow:
         self.open_window(ExportWindow)
 
     def open_dq_panel(self):
-        from ui.data_quality import DataQualityWindow
-
-        self.open_window(DataQualityWindow)
+        from ui.rule_library_window import RuleLibraryWindow
+        return self.open_window(RuleLibraryWindow)
 
     def open_sql_editor(self):
         from ui.sql_workspace import SqlWorkspace

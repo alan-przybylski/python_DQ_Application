@@ -25,11 +25,11 @@ def dashboard(sqlite_database, monkeypatch):
 
 
 def test_main_menu_environment_navigation_and_report_filter(dashboard):
-    assert set(dashboard.buttons) == {'Databricks', 'Local', 'Quality report', 'DQ tickets', 'Manage users', 'Settings'}
+    assert set(dashboard.buttons) == {'Databricks', 'Local', 'Rule library', 'Quality report', 'DQ tickets', 'Manage users', 'Settings'}
     assert not hasattr(dashboard, 'environment')
     local = dashboard.open_environment('local')
     assert local.environment == 'local'
-    assert set(local.buttons) == {'Browse tables and columns', 'SQL editor', 'Rule library', 'Run checks', 'Quality report', 'Import / export data'}
+    assert set(local.buttons) == {'Browse tables and columns', 'SQL editor', 'Run checks', 'Quality report', 'Import / export data'}
     report = local.report()
     assert report.environment == 'local'
     assert not hasattr(report, 'environment_picker')

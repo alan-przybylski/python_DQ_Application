@@ -20,15 +20,15 @@ clean history, separate from the original course project.
 
 ## Local and Databricks workspaces (DEV)
 
-After sign-in, the main menu contains **Databricks**, **Local**, **Quality report**,
+After sign-in, the main menu contains **Databricks**, **Local**, **Rule library**, **Quality report**,
 **DQ tickets**, **Settings**, and **Manage users** (administrators only).
 The shared reports and tickets show the execution environment and offer an
 All / Local / Databricks filter. Sign out stays in the footer.
 
-**Local** opens a separate menu for tables, SQL, rules, running checks, local
+**Local** opens a separate menu for tables, SQL, running checks, local
 reports, and import/export. Its import/export submenu contains CSV imports,
 local exports and import history. **Databricks** opens its own menu with an
-explicit connection profile: tables, SQL, rules, runs/schedules, cloud reports
+explicit connection profile: tables, SQL, runs/schedules, cloud reports
 and transfers. Reports opened from an environment menu are scoped to that
 environment. **Manage schedules in Databricks** opens the selected workspace's
 Jobs page in your browser; scheduling is managed there.
@@ -39,6 +39,19 @@ download DQ results. Downloads remain optional for cloud SQL. Settings contains
 language selection and connection-profile creation, selection and deletion,
 independent of importing data. Each submenu provides a return to its parent;
 environment menus also return to the main menu.
+
+**Rule library** is a single shared inventory with All / Databricks / Local filters
+and an optional connection-profile filter. Each rule appears once, classified by
+its execution environment. It shows publication state, active state, version,
+source table and a read-only saved SQL definition. **Open SQL** opens the relevant
+editor; entering SQL editor directly starts with an empty editor.
+
+The library includes older SQLite-authored rules already linked to Databricks.
+Their saved published SQL is shown against the remote source, instead of showing
+their different local SQL or hiding them. These entries are marked **Linked local
+rule**; use **Edit rule** to edit their existing definition and publish via the
+transfer screen. Native cloud drafts retain their separate save/publish workflow.
+Listing rules is read-only and does not duplicate or republish scheduled checks.
 
 In the Databricks editor select a saved connection profile, enter a catalog and
 schema, and click **Browse cloud tables**. The browser shows remote column types,
@@ -79,7 +92,7 @@ history to the app, one check/run per history object, with duplicate downloads
 ignored. Cloud reports include datasets with no local copy. Reports filter by
 execution environment; tickets filter by the environment of their failure run.
 Existing legacy SQLite-authored rules and their remote mappings are preserved
-and remain available in the local library and transfer screen. New native cloud
+and remain available in the shared rule library and transfer screen. New native cloud
 rules are edited in Databricks workspace and are excluded from local TOML exports.
 
 The schema upgrade adds a SQL-engine marker and backs up established local

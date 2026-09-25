@@ -223,10 +223,10 @@ class SqlWorkspace:
         if not sql.strip():
             self.status.set(tr("Write a query first."))
             return
-        from ui.data_quality import DataQualityWindow
+        from ui.rule_library_window import RuleLibraryWindow
 
         window = tk.Toplevel(self.root)
-        library = DataQualityWindow(window, self.username, self.role, self.root, self.time_var)
+        library = RuleLibraryWindow(window, self.username, self.role, self.root, self.time_var)
         library.rule_form(initial_sql=sql, initial_table=self.selected_table())
 
     def go_back(self):

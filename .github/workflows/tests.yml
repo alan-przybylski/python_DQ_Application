@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
@@ -10,6 +10,19 @@ permissions:
   contents: read
 
 jobs:
+  web-demo:
+    name: Web demo / Python 3.13
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install web dependencies
+        run: python -m pip install -r web_demo/requirements.txt pytest
+      - name: Verify session isolation, reports and Streamlit interface
+        run: python -m pytest tests/test_web_demo.py -q
   test:
     name: Python 3.14 / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

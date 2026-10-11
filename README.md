@@ -18,6 +18,22 @@ clean history, separate from the original course project.
 
 [Try the demo](#quick-start) · [Walkthrough](docs/DEMO.md) · [Architecture](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
+## Interactive web demo (DEV)
+
+The Streamlit interface includes **two synthetic tables with 12 records each**,
+**four SQL DQ rules per table**, editable data, SQL previews and separate reports
+for every run. Each visitor receives an isolated temporary database and can reset
+their own demo. It uses the same DQ execution engine as the desktop application.
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe -r web_demo/requirements.txt
+.venv/Scripts/python.exe -m streamlit run web_demo/app.py
+```
+
+Open `http://localhost:8501`. For Community Cloud, choose entrypoint
+`web_demo/app.py`, branch `dev` and Python 3.13. No secrets or Databricks account
+are needed. [Walkthrough and deployment instructions](docs/WEB_DEMO.md).
+
 ## Local and Databricks workspaces (DEV)
 
 After sign-in, the main menu contains **Databricks**, **Local**, **Rule library**, **Quality report**,

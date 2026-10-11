@@ -66,7 +66,7 @@ def strict_conversion(value, kind):
             ):
                 raise ValueError
             return number
-    except ValueError, TypeError, OverflowError, InvalidOperation:
+    except (ValueError, TypeError, OverflowError, InvalidOperation):
         pass
     raise AppError("Conversion would lose data. No changes were saved.")
 
@@ -96,7 +96,7 @@ def protect_rules(connection, table, column):
         connection.set_authorizer(authorize)
         try:
             connection.execute("EXPLAIN " + sql).fetchall()
-        except sqlite3.Error, TypeError:
+        except (sqlite3.Error, TypeError):
             raise AppError(
                 "Cannot verify rule #{rule}. Fix its SQL before editing columns.",
                 rule=rule_id,

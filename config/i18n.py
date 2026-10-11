@@ -7,6 +7,7 @@ from config.paths import DATA_DIR
 SETTINGS_PATH = DATA_DIR / "settings.json"
 _language = "EN"
 PL = {
+    'SQL preview exceeds the row limit. Add LIMIT to the query.': 'Podgląd SQL przekracza limit wierszy. Dodaj LIMIT do zapytania.',
     'This published rule has a linked local definition. Use Edit rule in Rule library, then publish changes through Data transfers.': 'Ta opublikowana reguła ma powiązaną definicję lokalną. Użyj „Edytuj regułę” w bibliotece reguł, a następnie opublikuj zmiany w oknie transferów.',
     'Use Edit rule in Rule library for this linked definition, then publish through Data transfers.': 'Użyj „Edytuj regułę” w bibliotece reguł, a następnie opublikuj tę powiązaną definicję w oknie transferów.',
     'Import local rule files': 'Importuj pliki reguł lokalnych',
@@ -575,7 +576,7 @@ def load_language():
             json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("language", "EN"),
             persist=False,
         )
-    except OSError, ValueError, TypeError:
+    except (OSError, ValueError, TypeError):
         set_language("EN", persist=False)
 
 

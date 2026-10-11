@@ -9,7 +9,7 @@ from database.connection import dict_row_factory, get_connection
 from logic.datasets import checked_table, list_tables, write_csv
 
 
-def evaluate(connection, sql, tables):
+def evaluate(connection, sql, tables, *, max_records=None):
     from logic.references import resolve_local
     try:
         sql = resolve_local(connection,sql)
@@ -51,7 +51,10 @@ def evaluate(connection, sql, tables):
             raise AppError(
                 "Rule output must contain id, the tested field as the second column, and dq_check (0 = PASS, 1 = FAIL)."
             )
-        records = [dict(zip(names, row)) for row in cursor.fetchall()]
+        rows = cursor.fetchall() if max_records is None else cursor.fetchmany(max_records + 1)
+        if max_records is not None and len(rows) > max_records:
+            raise AppError("SQL preview exceeds the row limit. Add LIMIT to the query.")
+        records = [dict(zip(names, row)) for row in rows]
         for record in records:
             if record["dq_check"] not in (0, 1):
                 raise AppError(
@@ -86,13 +89,13 @@ def error_text(message):
         decoded = json.loads(message or '""')
         if isinstance(decoded, str):
             return decoded
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         pass
     return message or "DQ check failed"
 
 
-def run_checks(table, username, rule_id=None, include_remote=False):
-    writer, reader = get_connection(), get_connection()
+def run_checks(table, username, rule_id=None, include_remote=False, *, database=None):
+    writer, reader = get_connection(database), get_connection(database)
     try:
         writer.execute("BEGIN IMMEDIATE")
         checked_table(writer, table)

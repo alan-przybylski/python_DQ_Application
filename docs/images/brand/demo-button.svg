@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="44" viewBox="0 0 230 44" role="img" aria-label="Open interactive demo">
+  <rect width="230" height="44" rx="7" fill="#147d83"/>
+  <text x="19" y="27" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" letter-spacing=".5" fill="white">OPEN INTERACTIVE DEMO</text>
+  <path d="M205 17l5 5-5 5" fill="none" stroke="white" stroke-width="2"/>
+</svg>

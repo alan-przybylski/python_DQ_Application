@@ -3,16 +3,13 @@
 </p>
 
 <p align="center">
-  <a href="https://alan-dq-studio.streamlit.app/"><img src="https://img.shields.io/badge/OPEN_INTERACTIVE_DEMO-147D83?style=for-the-badge&amp;logo=streamlit&amp;logoColor=white" alt="Open interactive demo"></a>
-  <a href="docs/WEB_DEMO.md"><img src="https://img.shields.io/badge/TAKE_THE_TOUR-12243A?style=for-the-badge" alt="Take the tour"></a>
+  <a href="https://alan-dq-studio.streamlit.app/"><img src="docs/images/brand/demo-button.svg" alt="Open interactive demo" width="230" height="44"></a>
+  <a href="docs/WEB_DEMO.md"><img src="docs/images/brand/tour-button.svg" alt="Take the tour" width="170" height="44"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml"><img src="https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests on main"></a>
-  <img src="https://img.shields.io/badge/Python-3776AB?logo=python&amp;logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/SQL-12243A" alt="SQL">
-  <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&amp;logoColor=white" alt="SQLite">
-  <img src="https://img.shields.io/badge/Databricks-FF3621?logo=databricks&amp;logoColor=white" alt="Databricks integration">
+  <img src="docs/images/brand/stack.svg" alt="Python · SQL · SQLite · Databricks" width="300" height="22">
 </p>
 
 <p align="center"><strong>Find the bad records. Understand the rule. Verify the repair.</strong><br>

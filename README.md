@@ -1,363 +1,167 @@
-# DQ Studio
+<p align="center">
+  <img src="docs/images/brand/header.svg" alt="DQ Studio — Make data quality visible. Python, SQL and traceable results." width="100%">
+</p>
 
-### Make data quality visible.
+<p align="center">
+  <a href="https://alan-dq-studio.streamlit.app/"><img src="https://img.shields.io/badge/OPEN_INTERACTIVE_DEMO-147D83?style=for-the-badge&amp;logo=streamlit&amp;logoColor=white" alt="Open interactive demo"></a>
+  <a href="docs/WEB_DEMO.md"><img src="https://img.shields.io/badge/TAKE_THE_TOUR-12243A?style=for-the-badge" alt="Take the tour"></a>
+</p>
 
-[![Tests](https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml/badge.svg)](https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml)
-![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
-![SQLite](https://img.shields.io/badge/Storage-SQLite-146C72?logo=sqlite&logoColor=white)
-![Desktop](https://img.shields.io/badge/Desktop-Tkinter-12243A)
+<p align="center">
+  <a href="https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml"><img src="https://github.com/alan-przybylski/python_DQ_Application/actions/workflows/tests.yml/badge.svg?branch=main" alt="Tests on main"></a>
+  <img src="https://img.shields.io/badge/Python-3776AB?logo=python&amp;logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/SQL-12243A" alt="SQL">
+  <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&amp;logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/Databricks-FF3621?logo=databricks&amp;logoColor=white" alt="Databricks integration">
+</p>
 
-**Turn CSV files and Databricks snapshots into traceable, local data quality checks.**
+<p align="center"><strong>Find the bad records. Understand the rule. Verify the repair.</strong><br>
+A Python and SQL data quality project by <a href="https://github.com/alan-przybylski">Alan Przybylski</a>.</p>
 
-A local Python / SQL / Data Quality portfolio project by **Alan Przybylski**.
-Import a dataset, define SQL rules, run checks, and investigate failed records
-alongside historical quality trends. This standalone repository starts with a
-clean history, separate from the original course project.
+DQ Studio turns SQL checks into traceable reports: which rule ran, which records
+failed and what changed after a repair. Explore the browser demo in a few clicks,
+or use the desktop application with local datasets and Databricks.
 
-![Actual report: KPI cards, quality trend and failed records](docs/images/results.png)
+## Try it in two minutes
 
-[Try the demo](#quick-start) · [Walkthrough](docs/DEMO.md) · [Architecture](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
+**[Open the live demo →](https://alan-dq-studio.streamlit.app/)** No installation or sign-in.
 
-## Interactive web demo (DEV)
+1. **Explore** — choose `customers` or `products` and inspect the deliberately imperfect data.
+2. **Investigate** — open **Rule library**, read the SQL and inspect failures in **Quality report**.
+3. **Repair** — in **Data workspace**, edit a value or choose **Apply clean sample + run checks**.
+4. **Verify** — compare the new report with the original run. The earlier evidence stays available.
 
-The Streamlit interface includes **two synthetic tables with 12 records each**,
-**four SQL DQ rules per table**, editable data, SQL previews and separate reports
-for every run. Each visitor receives an isolated temporary database and can reset
-their own demo. It uses the same DQ execution engine as the desktop application.
+<p align="center">
+  <a href="https://alan-dq-studio.streamlit.app/"><img src="docs/images/web/workflow.gif" alt="Actual demo: inspect customer data, read a SQL rule, review failed checks, then verify a clean run." width="800"></a>
+</p>
 
-```powershell
-uv pip install --python .venv/Scripts/python.exe -r web_demo/requirements.txt
-.venv/Scripts/python.exe -m streamlit run web_demo/app.py
-```
+<p align="center"><sub>Actual browser captures · synthetic data · <a href="docs/images/web/report-clean.png">View the final report as a still image</a></sub></p>
 
-Open `http://localhost:8501`. For Community Cloud, choose entrypoint
-`web_demo/app.py`, branch `dev` and Python 3.13. No secrets or Databricks account
-are needed. [Walkthrough and deployment instructions](docs/WEB_DEMO.md).
+| Demo dataset | Records | Four checks |
+|---|---:|---|
+| `customers` | 12 | Required name · email format · age range · unique email |
+| `products` | 12 | Unique SKU · required name · positive price · valid launch date |
 
-## Local and Databricks workspaces (DEV)
+Every visitor gets a separate temporary database. **Reset demo** restores the
+starting data and baseline reports. Changes last for the browser session.
+The public demo runs on SQLite; the desktop application provides live Databricks access.
 
-After sign-in, the main menu contains **Databricks**, **Local**, **Rule library**, **Quality report**,
-**DQ tickets**, **Settings**, and **Manage users** (administrators only).
-The shared reports and tickets show the execution environment and offer an
-All / Local / Databricks filter. Sign out stays in the footer.
+## One project, two ways to explore
 
-**Local** opens a separate menu for tables, SQL, running checks, local
-reports, and import/export. Its import/export submenu contains CSV imports,
-local exports and import history. **Databricks** opens its own menu with an
-explicit connection profile: tables, SQL, runs/schedules, cloud reports
-and transfers. Reports opened from an environment menu are scoped to that
-environment. **Manage schedules in Databricks** opens the selected workspace's
-Jobs page in your browser; scheduling is managed there.
+| | Browser demo | Desktop application |
+|---|---|---|
+| Data | Two editable synthetic datasets | CSV datasets, local tables and Databricks |
+| Rules | Eight saved rules + SQL draft previews | Rule creation, versions, local/cloud filtering and publication |
+| Execution | One rule or all four for a dataset | Local checks and Databricks runs |
+| Evidence | Per-run counts, failed records and CSV export | Reports, trends, run history and DQ tickets |
+| Workspace | Session-scoped, resettable | Persistent SQLite storage, profiles and PL/EN interface |
 
-The cloud transfer menu names its destinations explicitly: send a local table,
-create a local snapshot, export the cloud preview to CSV (up to 500 rows), or
-download DQ results. Downloads remain optional for cloud SQL. Settings contains
-language selection and connection-profile creation, selection and deletion,
-independent of importing data. Each submenu provides a return to its parent;
-environment menus also return to the main menu.
+The desktop has separate **Local** and **Databricks** workspaces, a shared
+**Rule library**, and reports that can be filtered by execution environment.
+Cloud rules use ordinary SQL and fully qualified table names. Results can be
+downloaded into the application without importing the source tables.
 
-**Rule library** is a single shared inventory with All / Databricks / Local filters
-and an optional connection-profile filter. Each rule appears once, classified by
-its execution environment. It shows publication state, active state, version,
-source table and a read-only saved SQL definition. **Open SQL** opens the relevant
-editor; entering SQL editor directly starts with an empty editor.
+**[Desktop guide](docs/DESKTOP_GUIDE.md)** · **[Databricks setup](docs/DATABRICKS.md)** · **[Scheduled jobs & result sync](docs/DATABRICKS_SYNC.md)**
 
-The library includes older SQLite-authored rules already linked to Databricks.
-Their saved published SQL is shown against the remote source, instead of showing
-their different local SQL or hiding them. These entries are marked **Linked local
-rule**; use **Edit rule** to edit their existing definition and publish via the
-transfer screen. Native cloud drafts retain their separate save/publish workflow.
-Listing rules is read-only and does not duplicate or republish scheduled checks.
-
-In the Databricks editor select a saved connection profile, enter a catalog and
-schema, and click **Browse cloud tables**. The browser shows remote column types,
-including decimal precision. SQL runs in that profile's warehouse; referenced
-tables do not need to exist in SQLite. Use fully qualified names:
+## SQL you can inspect
 
 ```sql
-SELECT p.product_id AS id,
-       p.country_code,
-       CASE WHEN c.country_code IS NULL THEN 1 ELSE 0 END AS dq_check
-FROM workspace.dq_app.products AS p
-LEFT JOIN workspace.dq_app.ref_countries AS c
-    ON p.country_code = c.country_code;
+SELECT id,
+       age,
+       CASE
+           WHEN age BETWEEN 18 AND 120 THEN 0
+           ELSE 1
+       END AS dq_check
+FROM customers;
 ```
 
-The preview is read-only, returns up to 500 rows, and requests server cancellation
-after 60 seconds of query execution or when Cancel is clicked. Connection/OAuth
-time is separate from that query limit. Job execution checks the complete datasets,
-without the editor's preview row limit.
+**`0` = PASS · `1` = FAIL.** Each row identifies a record and its tested field.
+Counts and failed values belong to a specific run; changing the data does not
+rewrite that run's report. SQL execution errors are reported separately from
+data quality failures.
 
-**Save as new cloud rule** stores a local draft of the Databricks definition.
-Select the draft and **Publish saved rule** to validate its Delta dependencies
-and output columns (`id`, one checked field, `dq_check`) in the warehouse, then
-publish it to the profile catalog's `dq_control`. Scheduled jobs configured for
-that same control catalog/schema pick it up on their next execution. Native cloud
-rules use the existing contract 3 runner and require Delta source/reference
-tables with readable snapshot history.
+## How it is built
 
-**Save cloud changes** creates a new local version, preserving previous SQL and
-published snapshots. The list distinguishes Draft, Pending publication and
-Published. Changes, including the Active checkbox, reach scheduled jobs only
-after publication. The editor and the selected saved rule must match before
-publishing; unsaved edits are never silently published.
+```mermaid
+flowchart LR
+    Web[Streamlit demo] --> Engine[Shared Python DQ engine]
+    Desktop[Tkinter desktop] --> Engine
+    Engine --> SQLite[(SQLite datasets + run history)]
+    Desktop --> Cloud[Databricks SQL + scheduled jobs]
+    Cloud --> Delta[(Delta rules + results)]
+```
 
-Cloud results remain in `dq_control.dq_runs`, `dq_results` and `dq_errors`.
-**Download all results** in the cloud workspace downloads the selected profile's
-history to the app, one check/run per history object, with duplicate downloads
-ignored. Cloud reports include datasets with no local copy. Reports filter by
-execution environment; tickets filter by the environment of their failure run.
-Existing legacy SQLite-authored rules and their remote mappings are preserved
-and remain available in the shared rule library and transfer screen. New native cloud
-rules are edited in Databricks workspace and are excluded from local TOML exports.
+- **Shared execution logic:** the web and local desktop checks use `logic/dq_engine.py`.
+- **Traceable evidence:** run IDs link rule versions, aggregate counts and row-level findings.
+- **Atomic persistence:** a rule's counts and details commit together using SQLite savepoints.
+- **Controlled SQL previews:** read-only dataset access, output validation, row and time limits.
+- **Session isolation:** the browser demo supplies its own database path without changing global desktop configuration.
+- **Regression coverage:** core tests on Windows/Linux, desktop GUI checks on Windows and web checks on Python 3.13.
 
-The schema upgrade adds a SQL-engine marker and backs up established local
-databases before applying it. It does not change dataset values or rewrite
-existing rules, schedules or historical results.
+**[Architecture & tradeoffs](docs/ARCHITECTURE.md)** · **[Security notes](SECURITY.md)** · **[Changelog](CHANGELOG.md)**
 
-## One workspace, from import to investigation
+## Run it locally
 
-| Step | What you can do |
-|---|---|
-| Import | CSV with table-specific templates, or read-only Databricks downloads into local SQLite |
-| Prepare | Preview data, map columns, edit table columns with backup and guarded type conversion |
-| Define | Add SQL rules for any dataset, archive versions and revise inactive rules |
-| Run | Execute one rule or all active rules; each execution gets its own persistent run ID |
-| Investigate | View KPI cards, trends and searchable failed records for the selected run |
-| Export | Save an entire dataset or the selected run's errors to a chosen CSV file |
-| Manage | Assign superuser/user roles, change passwords and deactivate accounts |
-| Localize | Switch PL/EN at sign-in; the preference is remembered locally |
+Clone the project, then choose an interface. These commands use [uv](https://docs.astral.sh/uv/).
 
-Consistent window sizes, scrollable tables and a shared navy/teal theme.
-The demo includes **12 fictional customers, 3 SQL checks and 3 linked runs**
-showing a data cleanup journey.
-
-## Quick start
-
-**Windows desktop · Python 3.14 with Tkinter · [uv](https://docs.astral.sh/uv/)**
-
-```powershell
+```bash
 git clone https://github.com/alan-przybylski/python_DQ_Application.git
 cd python_DQ_Application
+```
+
+**Web demo · Python 3.13**
+
+```bash
+uv run --no-project --python 3.13 --with-requirements web_demo/requirements.txt python -m streamlit run web_demo/app.py
+```
+
+Open `http://localhost:8501`. [Deployment and session details](docs/WEB_DEMO.md).
+
+**Desktop demo · Windows, Python 3.14 and Tkinter**
+
+```bash
 uv sync --frozen
 uv run --frozen python main.py --demo
 ```
 
-A **fresh** demo uses **`demo` / `Demo2026`**.
-Existing demo databases are reused, never reset; their passwords remain unchanged.
-Demo data lives in `data/demo.db`, separate from your private `data/app.db`.
+A fresh desktop demo uses **`demo` / `Demo2026`** and contains its own customer
+dataset, three rules and seeded history. Its database is reused between launches.
+Run `uv run --frozen python main.py` to create your own local workspace.
+[Setup, launchers and account management](docs/DESKTOP_GUIDE.md).
 
-Open **Quality report** directly from the main menu. Import
-`samples/customers_with_issues.csv`, run all customer checks, inspect the failed
-records, then repeat with `samples/customers_clean.csv`.
-
-### Double-click launch on Windows
-
-After the one-time `uv sync --frozen` setup, double-click:
-
-- `Start DQ Studio.cmd` for your local application database.
-- `Start DQ Studio Demo.cmd` for the isolated synthetic demo.
-
-The launchers use the project's own `.venv` and work from any folder, including
-paths with spaces. A console may flash briefly; the application then runs without
-a persistent terminal. Missing environments display setup instructions. Startup
-errors display a dialog; diagnostics are in the Git-ignored `data/launcher.log`
-(replaced on each launch). No dependencies are installed automatically.
-
-For a desktop shortcut, right-click the normal launcher and choose **Send to →
-Desktop (create shortcut)**. Keep the launcher in the project folder. After updates,
-the same shortcut continues to work; only moving the project requires changing it.
-Close the app before updating and run `uv sync --frozen` when dependencies change.
-
-### SQL editor
-
-Open **SQL editor** from the workspace. Select a dataset table and click
-**Preview table**, or write SQL and press **Ctrl+Enter**. A selection runs on its
-own; otherwise the whole editor runs. Queries read the current application database
-(or the isolated demo database when launched with `--demo`).
-
-The resizable view shows tables and columns beside the editor and results.
-Previews are read-only, limited to 500 displayed rows and 10 seconds, and can be
-cancelled. Internal application tables are excluded, as in the rule engine.
-Use **Rule template** for a starting check, then **Create rule** to transfer the
-SQL into the existing rule form. Choose the target table and complete the details;
-saving validates the full rule using the existing rule engine.
-
-### DQ tickets and rule severity
-
-Rules have **Low**, **Medium** or **High** severity; existing rules default to
-Medium. A failed check creates one open ticket per rule and dataset, with a
-deadline of **7 / 3 / 1 calendar days**, respectively, from ticket creation.
-The ticket snapshots severity and deadline; retries and rule edits do not move them.
-
-Open **DQ tickets** to filter open, overdue or assigned tickets. The check runner
-is the reporter and initial assignee. The latest importer and source filename are
-recorded separately when available. The reporter, assignee or a superuser can
-reassign the ticket, add comments and move it through New, In progress and To verify.
-Successful checks with at least one record and no failures close it automatically.
-SQL errors, empty checks and skipped rules never close tickets. Recurring failures
-update the open ticket; failures after closure create a new ticket.
-
-The detail view links to the latest failing run's records (up to 500) and keeps an
-activity log. Existing results are not retroactively turned into tickets; run a
-check to start the workflow. Ticket records and comments stay in the local database.
-Permanently deleting a rule cancels its open tickets with the status **Rule deleted**,
-retaining their activity history; deleted result records are no longer available.
-
-### Rules in Git
-
-The rule library offers **Import rule files** and **Export rule files** for
-superusers. Each rule is stored as readable TOML metadata plus a separate SQL file.
-The [`rules/`](rules/README.md) directory includes two opt-in examples.
-Stable keys prevent duplicate imports; changed definitions create a new version
-and retain the old definition in history. An import is atomic across all files.
-
-Run local checks in the desktop application. Databricks checks can be started
-from the application or scheduled independently using the supplied notebook.
-
-### Application tour
-
-Real application windows, captured using temporary synthetic data only:
-
-![DQ Studio walkthrough](docs/images/walkthrough.gif)
-
-### Use your own data
-
-```powershell
-uv run --frozen python main.py
-```
-
-On first normal launch, an empty database opens **Create your administrator**.
-Choose a username (prefilled with `Admin`), enter and confirm your own password,
-then click **Create account**. The first account is a **superuser** and the app
-opens immediately. Later launches show the normal sign-in screen.
-Only a password hash is stored in the local database; no default administrator
-password is distributed. Existing accounts and passwords are never replaced or
-reset. The separate demo still uses its own account.
-
-For a custom first account, run `uv run --frozen python -m scripts.init_db --admin your_login`
-before the first normal launch. Passwords entered through account management
-need **6 characters, an uppercase letter and a digit**. Existing users
-and passwords are retained. The account form explains unmet requirements.
-Usernames and passwords are case-sensitive at sign-in: `admin` and `Admin`
-are not interchangeable. Existing account names and password hashes are unchanged.
-
-Without uv, create a Python 3.14 virtual environment, install
-`requirements.txt`, then run `python main.py`.
-
-## Engineering highlights
-
-All rule outputs use **`dq_check = 0` for PASS** and **`dq_check = 1` for FAIL**.
-For example: `CASE WHEN email IS NULL THEN 1 ELSE 0 END AS dq_check`.
-Existing databases are backed up in `data/backups` and migrated once at startup:
-legacy SQL is wrapped to invert its output, including archived definitions,
-and detailed result flags are inverted. Historical pass/fail counts and KPI stay
-unchanged. Previously exported files remain in their original convention.
-
-- **Atomic writes:** CSV rows, optional new table and import log commit together.
-- **Traceable results:** a DQ run links user, time, table, KPI and field-level findings.
-- **Guarded SQL:** read-only dataset access, output validation and a per-rule execution timeout.
-- **Safe upgrades:** additive SQLite migrations, automatic backup, no invented links for legacy history.
-- **Explicit permissions:** account changes and permanent rule deletion require an active superuser, checked in the service layer.
-- **Reproducible demo:** locked dependencies, synthetic samples and automated Windows/Linux tests.
-
-## Project structure
+<details>
+<summary><strong>Repository map and test commands</strong></summary>
 
 ```text
-main.py           Entry point; optional isolated demo
-ui/               Tkinter screens, shared widgets and theme
-logic/            Accounts, datasets, rule execution, history and exports
-database/         SQLite connections, original schema, additive migrations
-config/           Paths, database selection and PL/EN translations
-scripts/          Demo, first-user setup, desktop launcher, screenshot capture
-samples/          Fictional CSV inputs
-tests/            Behavioral regression tests and actual Tkinter workflows
-docs/             Walkthrough, architecture and actual screenshots
-data/             Private databases, preferences and backups (Git-ignored)
-excels/           Legacy export location (Git-ignored generated files)
+web_demo/       Streamlit UI, synthetic data and per-session storage
+ui/             Tkinter screens and navigation
+logic/          DQ engine, datasets, rule versions, reports and tickets
+integrations/   Databricks execution and SQL support
+database/       SQLite schema and migrations
+rules/          Example version-controlled SQL rules
+tests/          Behavior, data integrity and UI tests
+docs/           Guides, architecture and real application captures
 ```
 
-## Tests
-
 ```powershell
+# Core and desktop regression suite
 uv run --frozen pytest -q
-# On a Windows desktop:
+
+# Web behavior and interface checks, with the demo dependencies
+uv run --no-project --python 3.13 --with-requirements web_demo/requirements.txt --with pytest python -m pytest tests/test_web_demo.py -q
+
+# Desktop GUI tests on Windows
 $env:DQ_GUI_TESTS = '1'
 uv run --frozen pytest -q
 ```
 
-Tests use temporary databases, never private application data. GUI checks cover
-20 views in PL/EN at two screen sizes and an import → rule → report → export flow.
-CI runs core tests on Windows and Linux, plus GUI tests on Windows.
+Tests use temporary databases. Private databases, profiles and generated exports
+are Git-ignored. `main` is the published version; ongoing work happens on `dev`.
 
-## Databricks and table editing
+</details>
 
-The **Rule library** now shows one row per rule, with search, table/status filters
-and the latest KPI for the current version only. Open a rule for **Definition**,
-**Results** and **Version history**, including a color-coded SQL comparison. Existing
-definitions, archived versions and result history are retained without a migration.
+---
 
-**Delete rule permanently** is available only in a rule's details for superusers;
-regular users cannot see it. The service rechecks the account's current role and
-active status inside the deletion transaction, independently of UI visibility. Explicit
-confirmation removes the rule, all its versions, KPI, field results and execution
-errors in one transaction. Runs belonging only to that rule are removed; shared
-runs retain other rules' results and their counters/status are updated. Cancel is
-the default. Use **Deactivate** instead if history should remain. Dataset rows,
-existing exported files and backups are not deleted; there is no in-app undo.
-
-In **01 Import CSV**, choose **Import from Databricks** or **Edit table columns**.
-The Databricks connector uses browser OAuth and reads a selected
-`catalog.schema.table` or view. Download a preview, inspect column mapping, then
-explicitly save a new SQLite table or refresh an earlier snapshot of the same
-source. DQ rules query that local copy, not your remote warehouse.
-
-Named **connection profiles** persist hostname, HTTP path, catalog, schema and an
-optional table locally. Choose, update or delete profiles in the Databricks screen;
-the last selected profile is restored on reopening. No passwords or tokens are
-saved. Profiles are separate per SQLite workspace (including demo) and Git-ignored.
-
-Column editing supports adding, renaming, deleting, type changes and required
-fields. A database backup precedes every change; unsafe conversions, changes to
-`id`, and changes to columns used by current active/inactive rules are rejected.
-Templates read the updated schema automatically. No existing DQ history is reset.
-
-See the [Databricks setup and safety guide](docs/DATABRICKS.md) for connection
-details, refresh semantics, supported types and a small test table.
-Remote reads are tested with fakes; live-account validation is still pending.
-
-## Databricks rule and result synchronization
-
-The dashboard's **Databricks sync** screen sends tables and rules using one saved
-connection profile. Tables keep their local names in the profile's catalog and
-schema. Rules use ordinary SQL; the application resolves dependencies and validates
-the translated SQL in Databricks before publication. Results download into reports
-and DQ tickets. A portable notebook executes published rules independently.
-See the [setup and daily scheduling guide](docs/DATABRICKS_SYNC.md).
-Generate the standalone import file with `python -m scripts.build_databricks_notebook`.
-Local tests cover synchronization and UI; execution in a live Databricks workspace
-still needs validation.
-
-## Cross-table checks
-
-Import tables and write ordinary JOIN, EXISTS or CTE queries in the **SQL editor**.
-Use **Create rule** to save the SQL. No reference registry, aliases or separate
-cross-table builder is needed. Send each required table to Databricks, then send
-the rule from the library. Rules remain runnable locally after publication.
-See the [SQL walkthrough](docs/CROSS_TABLE.md). Update the generated notebook
-before scheduling rules using this SQL format.
-
-## Local storage
-
-Your private data stays in `data/app.db`; close the app before copying the database
-for a backup. The V2 upgrade also creates a pre-migration backup automatically.
-CSV exports are explicit snapshots saved where you choose.
-
-Old KPI and findings are preserved; only new executions have linked run history.
-This is a local portfolio app, not a production multi-user security boundary:
-anyone who can access the SQLite file can bypass application roles. Large imports
-and checks still run on the UI thread. Databricks network downloads run in a
-background worker with row/memory guards; local snapshot saves remain synchronous.
-
-Read the [architecture and limitations](docs/ARCHITECTURE.md#current-limitations)
-and [security notes](SECURITY.md) before using sensitive data.
+<p align="center"><strong>Built by Alan Przybylski</strong><br>
+Python · SQL · Data Quality · Databricks<br>
+<a href="https://alan-dq-studio.streamlit.app/">Explore the demo</a> · <a href="https://github.com/alan-przybylski">GitHub profile</a></p>

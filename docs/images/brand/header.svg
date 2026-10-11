@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" role="img" aria-labelledby="title desc">
+  <title id="title">DQ Studio — Make data quality visible.</title>
+  <desc id="desc">Python and SQL data quality. Inspect data, run checks and keep the evidence.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101e30"/><stop offset="1" stop-color="#183b48"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#ffffff" stroke-opacity=".035"/></pattern>
+  </defs>
+  <rect width="1280" height="340" rx="20" fill="url(#bg)"/>
+  <rect width="1280" height="340" rx="20" fill="url(#grid)"/>
+  <path d="M0 318H1280" stroke="#62d4cb" stroke-width="2" opacity=".2"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <rect x="48" y="44" width="5" height="22" rx="2" fill="#62d4cb"/>
+    <text x="68" y="62" font-size="15" font-weight="700" letter-spacing="4" fill="#83e2da">PYTHON / SQL / DATA QUALITY</text>
+    <text x="48" y="145" font-size="68" font-weight="750" letter-spacing="-3" fill="#ffffff">DQ <tspan fill="#62d4cb">/</tspan> STUDIO</text>
+    <text x="51" y="202" font-size="29" fill="#e2edf4">Make data quality visible.</text>
+    <text x="52" y="266" font-size="16" fill="#a6c0cd">INSPECT THE DATA</text>
+    <path d="M216 260H242m-5-5 5 5-5 5" fill="none" stroke="#62d4cb" stroke-width="2"/>
+    <text x="260" y="266" font-size="16" fill="#a6c0cd">RUN THE CHECKS</text>
+    <path d="M417 260H443m-5-5 5 5-5 5" fill="none" stroke="#62d4cb" stroke-width="2"/>
+    <text x="461" y="266" font-size="16" fill="#a6c0cd">KEEP THE EVIDENCE</text>
+    <rect x="846" y="64" width="374" height="212" rx="16" fill="#0e2031" stroke="#315566"/>
+    <text x="876" y="101" fill="#8fb0c1" font-size="13" letter-spacing="2">INTERACTIVE DEMO</text>
+    <text x="876" y="161" fill="#ffffff" font-size="38" font-weight="700">02<tspan dx="42">08</tspan><tspan dx="45">24</tspan></text>
+    <text x="876" y="187" fill="#adc6d2" font-size="14">tables<tspan x="971">SQL rules</tspan><tspan x="1085">records</tspan></text>
+    <path d="M876 211H1190" stroke="#315566"/>
+    <circle cx="882" cy="240" r="5" fill="#62d4cb"/>
+    <text x="900" y="245" fill="#cee8ec" font-size="14">Synthetic data. Real SQL checks.</text>
+  </g>
+</svg>

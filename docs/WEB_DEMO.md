@@ -1,5 +1,7 @@
 # Web demo
 
+**[Open the public demo](https://alan-dq-studio.streamlit.app/)** · [Project overview](../README.md)
+
 The web interface lives in the same repository as desktop and uses its existing
 SQLite DQ engine. It contains only synthetic data: 12 customers, 12 products and
 four rules for each table. It requires no Databricks connection or login.
@@ -37,11 +39,12 @@ After pushing the completed demo to GitHub:
 1. Sign in at https://share.streamlit.io/ and connect your GitHub account.
 2. Choose **Create app** and the repository
    `alan-przybylski/python_DQ_Application`.
-3. Select branch **dev** for this preview; publish a reviewed release from
-   **main** later.
+3. Select branch **main** for the public demo. Use **dev** only for a separate
+   development preview.
 4. Set the entrypoint to **web_demo/app.py**.
 5. Choose Python **3.13** in Advanced settings (3.14 also works locally).
-6. Choose an available subdomain, e.g. `dq-studio-demo`.
+6. The published app uses **alan-dq-studio.streamlit.app**. Choose another
+   available subdomain if deploying your own copy.
 7. Click Deploy. No secrets, database upload or Databricks settings are required.
 8. Make the app public in its sharing settings and test the link in incognito.
 

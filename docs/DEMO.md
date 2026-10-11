@@ -1,5 +1,9 @@
 # A short walkthrough
 
+For the browser version, [open the live demo](https://alan-dq-studio.streamlit.app/)
+or read the [web walkthrough](WEB_DEMO.md). The steps below describe the desktop
+demo, which has its own dataset and seed history.
+
 Start with `uv run --frozen python main.py --demo`.
 A **new** demo uses `demo` / `Demo2026`; existing passwords stay unchanged.
 Choose **EN** or **PL** at sign-in. The following labels use EN.
@@ -8,7 +12,7 @@ Choose **EN** or **PL** at sign-in. The following labels use EN.
 
 1. Open **Quality report** from the main menu. Seeded runs show three
    cleanup stages; use the run selector to inspect their KPI and failed records.
-2. Return to **Import CSV**, select **Existing table → customers**, and choose
+2. Open **Local → Import / export → Import CSV**, select **Existing table → customers**, and choose
    `samples/customers_with_issues.csv`. Review the preview/mapping, then **Import**.
 3. Open **Quality report → Run checks → All rules**. The report refreshes to the
    new run: cards, chart and failed-record list refer to that execution.
@@ -56,7 +60,8 @@ current version only—"No results" is not replaced with a previous version's KP
 
 For Databricks import/refresh and existing-column editing, see the
 [connection and safety guide](DATABRICKS.md). Both features are available under
-**01 Import CSV**, alongside the existing CSV workflow.
+the **Local** and **Databricks** workspaces. See the [desktop guide](DESKTOP_GUIDE.md)
+for current navigation and the distinction between snapshots and native cloud SQL.
 
 For a table containing `id` and `age`:
 
@@ -67,7 +72,7 @@ SELECT id,
 FROM customers;
 ```
 
-The tested field must be second; `1` means pass and `0` fail. Queries are
+The tested field must be second; `0` means pass and `1` fail. Queries are
 read-only and can access dataset tables, not accounts or internal history.
 
 ## Account management

@@ -1,10 +1,13 @@
 # Architecture & engineering decisions
 
-DQ Studio is a local Tkinter application with SQLite storage and embedded
-Matplotlib charts. There is no web server or database service to configure.
+DQ Studio has a Tkinter desktop interface and a Streamlit browser demo. Both use
+the same local Python DQ execution engine. Desktop stores persistent SQLite
+workspaces and also integrates with Databricks; the public web demo creates a
+temporary SQLite database per browser session.
 
 ```mermaid
 flowchart LR
+    Web[Streamlit demo] --> R
     UI[Tkinter / PL-EN] --> A[Account services / bcrypt]
     UI --> I[Dataset metadata / CSV import]
     UI --> R[Read-only SQL rule engine]
@@ -13,6 +16,8 @@ flowchart LR
     R --> DB
     DB --> V[Run selector / KPI / failed records]
     V --> E[Explicit CSV exports]
+    UI --> Cloud[Databricks SQL / scheduled jobs]
+    Cloud --> Delta[(Delta control tables)]
 ```
 
 ## Code map
@@ -20,6 +25,7 @@ flowchart LR
 | Component | Responsibility |
 |---|---|
 | `ui/` | Navigation, forms, consistent geometry, preview and report interaction |
+| `web_demo/` | Streamlit interface, synthetic seeds and session-owned temporary databases |
 | `logic/accounts.py` | Password validation, roles, actor authorization, last-superuser protection |
 | `logic/datasets.py` | Dataset allowlist, column metadata, parsing, atomic imports and exports |
 | `logic/dq_engine.py` | Read-only evaluation, result validation, run lifecycle and history queries |
@@ -57,6 +63,12 @@ Normal mode uses `data/app.db`; demo mode uses `data/demo.db`. A fresh demo gets
 synthetic users, data and linked results. Existing demo data is never reseeded.
 Language choice is saved separately in `data/settings.json`.
 
+The web demo uses `DemoSession` and an explicit database argument to `run_checks`.
+It never switches the global desktop database configuration. Each visitor gets
+12 customers, 12 products, eight rules and two baseline runs. Edits and reports
+last for the session; reset replaces only that session's temporary database.
+See [web deployment and isolation](WEB_DEMO.md).
+
 ## Transactions and history
 
 - Import validates the entire file, including mapped column types and duplicate
@@ -92,8 +104,9 @@ Initialization loads the original seven-table baseline, then applies the
 idempotent V2 migration. Established databases receive a SQLite backup before
 schema or role changes. Foreign keys are enabled for every connection.
 
-The application uses SQLite only. The one-time MySQL importer and its driver
-have been removed. SQLite schema upgrades remain supported.
+Local storage uses SQLite. Cloud execution uses Databricks and Delta control
+tables. The one-time MySQL importer and its driver have been removed; SQLite
+schema upgrades remain supported.
 
 `MYSQL_AI_CI`, `REGEXP` and `REGEXP_LIKE` preserve tested legacy use cases, not
 all MySQL collation or ICU behavior. These are local SQLite compatibility helpers;
@@ -130,8 +143,9 @@ profiles within a workspace. Profile selection does not authenticate remotely.
 - CSV parsing and rule results are held in memory; large workloads block the UI.
   Query timeout limits execution, not a hard process-wide memory budget.
 - Databricks downloads use a background worker, browser OAuth and a SELECT-only
-  connector. Preview/save are separate steps. Refresh uses a backup and an atomic
-  local replacement, not remote writes. See [DATABRICKS.md](DATABRICKS.md).
+  download connector. Preview/save are separate steps. Snapshot refresh uses a
+  backup and an atomic local replacement. Native cloud SQL and explicit table/rule
+  publication are separate workflows. See [DESKTOP_GUIDE.md](DESKTOP_GUIDE.md).
 - Dataset column editing uses guarded DDL/rebuilds, lossless value validation and
   pre-change backups. Complex unmanaged schemas are refused, not simplified.
 - Dates use local wall time, not timezone-aware UTC.
